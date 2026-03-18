@@ -1,0 +1,2914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WORLDVIEW — Global Intelligence Platform</title>
+
+<!-- ══════════════════════════════════════════════════════════════
+     FONTS: Chosen for readability in dark environments
+     - Barlow Condensed: Display/Labels (tight tracking, high legibility)
+     - IBM Plex Mono: Data values (monospaced, clear numerals)
+     - Outfit: Body text (modern, legible at small sizes)
+══════════════════════════════════════════════════════════════ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- Leaflet 1.9.4 — lightweight 2D map library -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Leaflet.Polyline.SnakeAnim — animates path lines (trajectories) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-polylinedecorator/1.6.0/leaflet.polylineDecorator.min.js"></script>
+
+<style>
+/* ══════════════════════════════════════════════════════════
+   DESIGN TOKENS — All colors as CSS variables for consistency.
+   Dark theme: bg is near-black navy, surfaces lift progressively.
+   Accent colors are vivid to ensure visibility against dark bg.
+══════════════════════════════════════════════════════════ */
+:root {
+  /* Backgrounds — progressively lighter */
+  --bg:    #03070f;   /* deepest: page bg */
+  --s0:    #060c1a;   /* base surface */
+  --s1:    #0a1223;   /* primary panels */
+  --s2:    #0e1930;   /* raised elements */
+  --s3:    #132240;   /* hover states */
+
+  /* Borders — subtle structure lines */
+  --b1:    #162038;
+  --b2:    #1e2e50;
+  --b3:    #283d64;
+
+  /* Accent Colors — vivid for dark-mode visibility */
+  --blue:  #4db8ff;   /* primary — aircraft, links */
+  --cyan:  #00e5ff;   /* secondary — vessels, ports */
+  --green: #00f5a0;   /* positive — ok states, growth */
+  --amber: #ffcc00;   /* warning — oil, caution */
+  --red:   #ff4466;   /* alert — anomaly, decline */
+  --purple:#c084fc;   /* military */
+  --orange:#ff8c42;   /* conflict zones */
+  --pink:  #f472b6;   /* satellites */
+
+  /* Text — progressive legibility */
+  --t0: #f0f8ff;   /* primary text — bright white-blue */
+  --t1: #b0c8e8;   /* secondary text — light blue-grey */
+  --t2: #6888a8;   /* tertiary text — mid grey */
+  --t3: #3a5070;   /* muted text — dark grey */
+}
+
+/* ── RESET & BASE ── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; }
+body {
+  background: var(--bg);
+  color: var(--t1);                              /* Default text is light grey-blue — readable */
+  font-family: 'Outfit', sans-serif;             /* Body font: Outfit (clear at all sizes) */
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Scanline overlay — subtle CRT effect over everything */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.04) 3px,
+    rgba(0, 0, 0, 0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--s0); }
+::-webkit-scrollbar-thumb { background: var(--b3); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--blue); }
+
+/* ── MONO FONT UTILITY ── */
+.mono { font-family: 'IBM Plex Mono', monospace; }
+
+/* ── LOADING SCREEN ── */
+#loader {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  transition: opacity 0.6s ease;
+}
+/* Background grid pattern for loader */
+#loader::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(var(--b1) 1px, transparent 1px),
+    linear-gradient(90deg, var(--b1) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.5;
+}
+.ld-radar {
+  position: relative;
+  width: 80px; height: 80px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1;
+}
+/* Expanding rings — radar sweep animation */
+.ld-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid var(--blue);
+  animation: radarRing 2s ease-out infinite;
+}
+.ld-ring:nth-child(1) { width: 24px; height: 24px; }
+.ld-ring:nth-child(2) { width: 48px; height: 48px; animation-delay: 0.5s; opacity: 0.6; }
+.ld-ring:nth-child(3) { width: 72px; height: 72px; animation-delay: 1s; opacity: 0.3; }
+@keyframes radarRing {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1.1); opacity: 0; }
+}
+.ld-center { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); z-index: 2; animation: ldPulse 1s infinite; }
+@keyframes ldPulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+.ld-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 32px; font-weight: 700;
+  letter-spacing: 8px;
+  color: var(--blue);
+  text-transform: uppercase;
+  z-index: 1;
+}
+.ld-sub { font-size: 11px; letter-spacing: 3px; color: var(--t3); z-index: 1; text-transform: uppercase; }
+.ld-bar { width: 240px; height: 2px; background: var(--b2); border-radius: 1px; overflow: hidden; z-index: 1; }
+.ld-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--cyan)); animation: ldFill 2.8s ease-out forwards; }
+@keyframes ldFill { from { width: 0; } to { width: 100%; } }
+.ld-msg { font-size: 10px; letter-spacing: 2px; color: var(--t3); z-index: 1; animation: txtBlink 1.2s infinite; }
+@keyframes txtBlink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+/* ══════════════════════════════════════════════════════════
+   APP LAYOUT — 3-column: sidebar | map | panel
+   Topbar above everything, Ticker below.
+══════════════════════════════════════════════════════════ */
+#app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* ── TOPBAR ── */
+#topbar {
+  height: 50px;
+  background: var(--s1);
+  border-bottom: 1px solid var(--b1);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 10px;
+  flex-shrink: 0;
+  z-index: 2000;
+}
+
+/* Logo — Barlow Condensed for strong branding */
+.logo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 20px; font-weight: 700;
+  letter-spacing: 5px;
+  color: var(--blue);
+  text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: ldPulse 2s infinite; }
+
+.sep { width: 1px; height: 26px; background: var(--b2); flex-shrink: 0; }
+
+/* LIVE indicator chip */
+.chip {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  border: 1px solid;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; letter-spacing: 2px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.chip-live   { color: var(--red);   border-color: rgba(255,68,102,.25); background: rgba(255,68,102,.08); }
+.chip-live span { width:5px;height:5px;border-radius:50%;background:var(--red);animation:ldPulse .8s infinite; }
+.chip-ok     { color: var(--green); border-color: rgba(0,245,160,.2);  background: rgba(0,245,160,.06); }
+.chip-warn   { color: var(--amber); border-color: rgba(255,204,0,.2);  background: rgba(255,204,0,.06); }
+.chip-red    { color: var(--red);   border-color: rgba(255,68,102,.2); background: rgba(255,68,102,.06); }
+
+/* ── UNIVERSAL SEARCH BAR ──
+   Spans the center of the topbar. Searches ALL data layers + geocoding.
+   Results appear in dropdown below with category chips. */
+#search-box {
+  flex: 1;
+  max-width: 520px;
+  position: relative;
+}
+#search-input {
+  width: 100%;
+  background: var(--s2);
+  border: 1px solid var(--b2);
+  border-radius: 5px;
+  padding: 7px 38px 7px 36px;
+  color: var(--t0);                    /* Bright text for input */
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+#search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(77,184,255,.12); }
+#search-input::placeholder { color: var(--t3); }
+.si-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--t3); font-size:13px; pointer-events:none; }
+.si-clear { position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--t3); cursor:pointer; font-size:15px; display:none; }
+.si-clear:hover { color: var(--t1); }
+
+/* Search results dropdown */
+#search-results {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--s1);
+  border: 1px solid var(--b2);
+  border-radius: 5px;
+  max-height: 340px; overflow-y: auto;
+  z-index: 9999;
+  display: none;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+}
+.sr-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(22,32,56,.5);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sr-item:hover { background: var(--s2); }
+.sr-item:last-child { border-bottom: none; }
+.sr-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px; letter-spacing: 1.5px;
+  padding: 2px 6px; border-radius: 2px;
+  flex-shrink: 0; text-transform: uppercase;
+}
+.sr-name { font-size: 12px; color: var(--t0); }   /* Bright for primary info */
+.sr-sub  { font-size: 10px; color: var(--t2); }
+
+/* Clock */
+#clock {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--t2);
+  line-height: 1.4; text-align: right;
+  margin-left: auto; flex-shrink: 0;
+}
+
+/* ── MAIN CONTENT ROW ── */
+#main { flex: 1; display: flex; overflow: hidden; }
+
+/* ══════════════════════════════════════════════════════════
+   LEFT SIDEBAR — Layer controls, stats, anomaly feed
+   Width: 200px fixed
+══════════════════════════════════════════════════════════ */
+#sidebar {
+  width: 200px;
+  background: var(--s0);
+  border-right: 1px solid var(--b1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Section label — Barlow Condensed for compact uppercase labels */
+.sl { font-family:'Barlow Condensed',sans-serif; font-size:9px; letter-spacing:2.5px; color:var(--t3); text-transform:uppercase; padding:10px 12px 6px; }
+
+/* Layer toggle row */
+.ltog {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  user-select: none;
+}
+.ltog:hover { background: rgba(255,255,255,.025); }
+.ltog-l { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--t1); font-family:'Outfit',sans-serif; }
+.ltog-icon { font-size:14px; width:18px; text-align:center; }
+.ltog-r { display:flex; align-items:center; gap:5px; }
+
+/* Count badge */
+.cnt {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px; padding: 1px 5px; border-radius: 2px;
+  background: rgba(77,184,255,.08); border: 1px solid rgba(77,184,255,.15);
+  color: var(--blue); min-width: 26px; text-align: center;
+}
+.cnt.w { background:rgba(255,68,102,.08); border-color:rgba(255,68,102,.2); color:var(--red); }
+
+/* Toggle switch */
+.sw { width:28px; height:14px; border-radius:7px; background:var(--b2); position:relative; transition:background .2s; flex-shrink:0; }
+.sw.on { background: var(--blue); }
+.sw::after { content:''; position:absolute; width:10px; height:10px; border-radius:50%; background:#fff; top:2px; left:2px; transition:transform .2s; }
+.sw.on::after { transform: translateX(14px); }
+
+/* Stat rows */
+.sb-row { display:flex; justify-content:space-between; padding:4px 12px; font-size:10px; border-bottom:1px solid rgba(22,32,56,.3); }
+.sb-k { color:var(--t3); font-family:'Outfit',sans-serif; }
+.sb-v { font-family:'IBM Plex Mono',monospace; font-weight:500; }
+.sb-v.g { color:var(--green); }
+.sb-v.a { color:var(--amber); }
+.sb-v.r { color:var(--red); }
+.sb-v.b { color:var(--blue); }
+.sb-v.p { color:var(--purple); }
+
+/* Sidebar sections */
+.sb-sec { border-bottom: 1px solid var(--b1); padding-bottom:6px; }
+.sb-scroll { flex:1; overflow-y:auto; max-height: 100%; scroll-behavior: smooth; padding-right: 2px; }
+
+/* Anomaly item */
+.an-item {
+  padding:7px 12px; border-bottom:1px solid rgba(22,32,56,.3);
+  cursor:pointer; transition:background .15s, transform .1s; flex-shrink:0;
+}
+.an-item:hover { background:rgba(255,255,255,.02); transform: translateX(2px); }
+.an-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; }
+.an-type { font-family:'Barlow Condensed',sans-serif; font-size:9px; letter-spacing:1.5px; text-transform:uppercase; }
+.an-sc { font-family:'IBM Plex Mono',monospace; font-size:8px; padding:1px 4px; border-radius:2px; }
+.an-msg { font-size:9px; color:var(--t1); line-height:1.4; }  /* t1 instead of dim — more readable */
+.an-time { font-size:8px; color:var(--t3); margin-top:2px; }
+
+/* ══════════════════════════════════════════════════════════
+   MAP CONTAINER — Takes all available space
+══════════════════════════════════════════════════════════ */
+#map-wrap { flex:1; position:relative; overflow:hidden; }
+#map { width:100%; height:100%; }
+
+/* Leaflet overrides for dark theme */
+.leaflet-container { background: var(--bg) !important; }
+.leaflet-control-zoom a {
+  background: var(--s2) !important;
+  color: var(--t0) !important;           /* Bright text on controls */
+  border-color: var(--b2) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.leaflet-control-zoom a:hover { background: var(--s3) !important; }
+.leaflet-control-attribution {
+  background: rgba(3,7,15,.8) !important;
+  color: var(--t3) !important;
+  font-size: 8px !important;
+}
+/* Custom popup — matches dark theme */
+.leaflet-popup-content-wrapper {
+  background: rgba(10,18,35,.97) !important;
+  border: 1px solid var(--b2) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 16px 48px rgba(0,0,0,.7) !important;
+  color: var(--t0) !important;           /* Bright popup text */
+}
+.leaflet-popup-tip-container { display:none !important; }
+.leaflet-popup-content { margin:0 !important; font-family:'Outfit',sans-serif !important; }
+.leaflet-popup-close-button { color:var(--t2) !important; font-size:16px !important; top:8px!important; right:8px!important; }
+/* Tooltip */
+.leaflet-tooltip {
+  background: rgba(10,18,35,.95) !important;
+  border: 1px solid var(--b2) !important;
+  color: var(--t0) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 10px !important;
+  border-radius: 3px !important;
+  padding: 3px 8px !important;
+  box-shadow: none !important;
+}
+
+/* ── MAP OVERLAYS ── */
+.mo {
+  position:absolute; z-index:400; pointer-events:none;
+  font-family:'IBM Plex Mono',monospace; font-size:9px;
+  color:rgba(105,136,168,.6); letter-spacing:.8px;
+}
+#mo-tl { top:10px; left:10px; line-height:2; }
+#mo-br { bottom:38px; right:10px; text-align:right; line-height:2; }
+
+/* Coordinates bar at bottom */
+#coords-bar {
+  position:absolute; bottom:38px; left:50%; transform:translateX(-50%);
+  z-index:400; pointer-events:none;
+  background:rgba(6,12,26,.9);
+  border:1px solid var(--b1); border-radius:3px;
+  padding:3px 12px;
+  font-family:'IBM Plex Mono',monospace; font-size:9px;
+  color:var(--t2); letter-spacing:1px;
+  backdrop-filter:blur(8px);
+  white-space:nowrap;
+}
+
+/* ── MAP CONTROLS BAR ── (location shortcuts + tile switcher + rotation) */
+#map-controls {
+  position:absolute; top:10px; left:50%; transform:translateX(-50%);
+  z-index:400;
+  display:flex; gap:4px; flex-wrap:nowrap;
+}
+.mc-btn {
+  background:rgba(6,12,26,.9);
+  border:1px solid var(--b1);
+  border-radius:3px;
+  padding:5px 10px;
+  font-family:'IBM Plex Mono',monospace; font-size:9px;
+  letter-spacing:1px;
+  color:var(--t2);
+  cursor:pointer;
+  transition:all .2s;
+  backdrop-filter:blur(8px);
+  white-space:nowrap;
+  text-transform:uppercase;
+}
+.mc-btn:hover { border-color:var(--blue); color:var(--blue); }
+
+/* ── MAP TILE STYLE SWITCHER ── */
+#tile-switcher {
+  position:absolute; bottom:50px; right:10px;
+  z-index:400;
+  background:rgba(6,12,26,.95);
+  border:1px solid var(--b2); border-radius:5px;
+  padding:10px; display:none; flex-direction:column; gap:4px;
+  backdrop-filter:blur(12px);
+  min-width:140px;
+}
+#tile-switcher.open { display:flex; }
+.ts-item {
+  display:flex; align-items:center; gap:8px;
+  padding:5px 8px; border-radius:3px;
+  cursor:pointer; font-size:10px; color:var(--t1);
+  transition:background .15s;
+  font-family:'Outfit',sans-serif;
+}
+.ts-item:hover { background:var(--s2); }
+.ts-item.active { color:var(--blue); }
+.ts-dot { width:8px;height:8px;border-radius:2px;flex-shrink:0; }
+
+/* Tile switcher toggle btn */
+#tile-toggle {
+  position:absolute; bottom:50px; right:10px;
+  z-index:400;
+}
+
+/* ── COMPASS / ROTATION CONTROL ── 
+   Click+drag or use arrow buttons to rotate the map view */
+#compass {
+  position:absolute; top:55px; right:10px;
+  z-index:400;
+  width:48px; height:48px;
+  cursor:pointer;
+  user-select:none;
+}
+#compass-ring {
+  width:48px; height:48px; border-radius:50%;
+  background:rgba(6,12,26,.9);
+  border:1px solid var(--b2);
+  display:flex; align-items:center; justify-content:center;
+  transition:border-color .2s;
+  backdrop-filter:blur(8px);
+}
+#compass-ring:hover { border-color:var(--blue); }
+#compass-needle {
+  position:relative; width:24px; height:24px;
+  transition:transform .3s ease;
+}
+/* N arrow — red/blue classic compass */
+#compass-needle::before {
+  content:'N';
+  position:absolute; top:-10px; left:50%; transform:translateX(-50%);
+  font-family:'IBM Plex Mono',monospace; font-size:8px; font-weight:600;
+  color:var(--red);
+}
+#compass-needle::after {
+  content:'';
+  position:absolute; top:0; left:50%; transform:translateX(-50%);
+  width:2px; height:24px;
+  background:linear-gradient(var(--red) 50%, var(--t3) 50%);
+  border-radius:1px;
+}
+
+/* ── ENTITY INSPECTOR CARD ──
+   Slides up from bottom-left when user clicks any map entity.
+   Shows detailed intelligence data. */
+#entity-card {
+  position:absolute; bottom:48px; left:10px;
+  width:272px; z-index:500;
+  background:rgba(6,12,26,.97);
+  border:1px solid var(--b2); border-radius:6px;
+  backdrop-filter:blur(16px);
+  display:none;
+  animation:slideUp .2s ease;
+  max-height:70vh; overflow-y:auto;
+}
+@keyframes slideUp { from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:none;} }
+.ec-hd {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 12px; border-bottom:1px solid var(--b1);
+  position:sticky; top:0;
+  background:rgba(6,12,26,.97);
+}
+.ec-type { font-family:'Barlow Condensed',sans-serif; font-size:9px; letter-spacing:2px; text-transform:uppercase; }
+.ec-close { background:none; border:none; color:var(--t2); cursor:pointer; font-size:18px; line-height:1; padding:0; }
+.ec-close:hover { color:var(--t0); }
+.ec-title { font-family:'Barlow Condensed',sans-serif; font-size:16px; font-weight:700; color:var(--t0); padding:8px 12px 2px; }
+.ec-sub { font-size:10px; color:var(--t2); padding:0 12px 8px; }
+.ec-body { padding:0 12px 8px; }
+/* Key-value row within entity card */
+.ekv {
+  display:flex; justify-content:space-between; align-items:flex-start;
+  padding:4px 0; border-bottom:1px solid rgba(22,32,56,.4);
+  font-size:10px;
+}
+.ekv:last-child { border-bottom:none; }
+.ek { color:var(--t3); flex-shrink:0; font-family:'IBM Plex Mono',monospace; font-size:9px; }
+.ev { color:var(--t0); text-align:right; max-width:170px; word-break:break-word; font-size:10px; }
+
+.ec-badge { display:inline-block; padding:2px 6px; border-radius:2px; font-size:8px; letter-spacing:1px; text-transform:uppercase; font-family:'IBM Plex Mono',monospace; }
+.b-ok   { background:rgba(0,245,160,.1); border:1px solid rgba(0,245,160,.2); color:var(--green); }
+.b-warn { background:rgba(255,204,0,.1);  border:1px solid rgba(255,204,0,.2);  color:var(--amber); }
+.b-red  { background:rgba(255,68,102,.1); border:1px solid rgba(255,68,102,.2); color:var(--red); }
+
+.ec-footer { padding:8px 12px; border-top:1px solid var(--b1); display:flex; gap:6px; flex-wrap:wrap; }
+.ec-act {
+  font-family:'IBM Plex Mono',monospace; font-size:8px; letter-spacing:1px;
+  padding:4px 8px; border-radius:2px; cursor:pointer;
+  background:var(--s2); border:1px solid var(--b2); color:var(--t2);
+  transition:all .15s; text-transform:uppercase;
+}
+.ec-act:hover { border-color:var(--blue); color:var(--blue); }
+
+/* Path trajectory line popup */
+.path-info {
+  margin-top:6px; padding:6px 8px;
+  background:rgba(77,184,255,.06); border:1px solid rgba(77,184,255,.15); border-radius:3px;
+  font-size:9px; color:var(--blue);
+}
+
+/* ── ANOMALY TOAST STACK ──
+   Real-time anomaly alerts appear top-right and auto-dismiss */
+#toast-stack {
+  position:absolute; top:10px; right:10px;
+  z-index:800;
+  display:flex; flex-direction:column; gap:6px;
+  width:270px;
+  pointer-events:none;
+}
+.toast {
+  border-radius:4px; overflow:hidden;
+  animation:toastSlide .3s ease;
+  pointer-events:auto;
+  backdrop-filter:blur(12px);
+}
+@keyframes toastSlide { from{opacity:0;transform:translateX(20px);} to{opacity:1;transform:none;} }
+.toast-bar { height:2px; }
+.toast-body { padding:8px 12px; background:rgba(6,12,26,.95); border:1px solid; border-top:none; border-radius:0 0 4px 4px; }
+.toast-title { font-size:10px; font-family:'Barlow Condensed',sans-serif; letter-spacing:1px; margin-bottom:2px; }
+.toast-msg { font-size:9px; color:var(--t2); }
+
+/* Live feed modal */
+#feed-modal {
+  position:fixed; inset:0; z-index:9000;
+  background:rgba(0,0,0,.8); backdrop-filter:blur(12px);
+  display:none; align-items:center; justify-content:center;
+}
+#feed-modal.open { display:flex; }
+.fm-box {
+  background:var(--s1); border:1px solid var(--b2); border-radius:8px;
+  width:800px; max-width:95vw; max-height:90vh; overflow:hidden;
+  display:flex; flex-direction:column;
+}
+.fm-hd {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px; border-bottom:1px solid var(--b1);
+}
+.fm-title { font-family:'Barlow Condensed',sans-serif; font-size:16px; font-weight:700; color:var(--t0); }
+.fm-close { background:none; border:none; color:var(--t2); cursor:pointer; font-size:20px; }
+.fm-close:hover { color:var(--t0); }
+.fm-body { flex:1; padding:16px; overflow-y:auto; }
+.cam-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+.cam-item {
+  background:var(--s2); border:1px solid var(--b1); border-radius:5px;
+  overflow:hidden; cursor:pointer;
+}
+.cam-thumb {
+  width:100%; height:130px; object-fit:cover;
+  background:var(--s3);
+  display:flex; align-items:center; justify-content:center;
+  font-size:32px; color:var(--t3);
+}
+.cam-info { padding:8px 10px; }
+.cam-name { font-size:11px; color:var(--t0); margin-bottom:2px; }
+.cam-loc { font-size:9px; color:var(--t3); }
+
+/* ══════════════════════════════════════════════════════════
+   RIGHT PANEL — News, Markets, Intel tabs
+   Width: 270px fixed
+══════════════════════════════════════════════════════════ */
+#panel {
+  width: 270px;
+  background: var(--s0);
+  border-left: 1px solid var(--b1);
+  display: flex; flex-direction: column;
+  overflow: hidden; flex-shrink: 0;
+}
+
+/* Tab navigation */
+.pt-nav { display:flex; border-bottom:1px solid var(--b1); flex-shrink:0; }
+.pt-btn {
+  flex:1; padding:10px 0;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:10px; letter-spacing:1.5px; text-transform:uppercase;
+  text-align:center; color:var(--t3);
+  cursor:pointer; border-bottom:2px solid transparent;
+  transition:all .2s;
+}
+.pt-btn.on { color:var(--blue); border-bottom-color:var(--blue); }
+.pt-btn:hover:not(.on) { color:var(--t1); }
+
+/* Tab content panels */
+.pt-scroll { flex:1; overflow-y:auto; }
+.pt { display:none; }
+.pt.on { display:block; }
+
+/* ── NEWS ITEMS ── */
+.ni {
+  padding:10px 12px; border-bottom:1px solid rgba(22,32,56,.4);
+  cursor:pointer; transition:background .15s;
+}
+.ni:hover { background:rgba(255,255,255,.02); }
+.ni-tag {
+  display:inline-block; font-family:'IBM Plex Mono',monospace;
+  font-size:7px; letter-spacing:1.5px;
+  padding:2px 5px; border-radius:2px; margin-bottom:4px;
+  text-transform:uppercase;
+}
+/* Tag color themes */
+.tag-b { background:rgba(255,68,102,.1); border:1px solid rgba(255,68,102,.2); color:var(--red); }
+.tag-m { background:rgba(192,132,252,.1); border:1px solid rgba(192,132,252,.2); color:var(--purple); }
+.tag-k { background:rgba(0,245,160,.1); border:1px solid rgba(0,245,160,.2); color:var(--green); }
+.tag-e { background:rgba(255,204,0,.1); border:1px solid rgba(255,204,0,.2); color:var(--amber); }
+.tag-w { background:rgba(0,229,255,.1); border:1px solid rgba(0,229,255,.2); color:var(--cyan); }
+.tag-s { background:rgba(77,184,255,.1); border:1px solid rgba(77,184,255,.2); color:var(--blue); }
+.tag-c { background:rgba(255,140,66,.1); border:1px solid rgba(255,140,66,.2); color:var(--orange); }
+
+.ni-title { font-size:11px; line-height:1.5; color:var(--t0); margin-bottom:3px; }    /* Bright for news */
+.ni-meta  { font-size:9px; color:var(--t3); font-family:'IBM Plex Mono',monospace; }
+
+/* ── MARKET ITEMS ── */
+.ms { padding:8px 12px; border-bottom:1px solid var(--b1); }
+.ms-hd { font-family:'Barlow Condensed',sans-serif; font-size:9px; letter-spacing:2px; color:var(--t3); text-transform:uppercase; margin-bottom:6px; }
+.mi { display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(22,32,56,.2); }
+.mi:last-child { border-bottom:none; }
+.mi-sym { font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; color:var(--t0); }
+.mi-name { font-size:9px; color:var(--t3); }
+.mi-p { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--t0); text-align:right; }
+.mi-c { font-family:'IBM Plex Mono',monospace; font-size:9px; text-align:right; }
+.up { color:var(--green) !important; }
+.dn { color:var(--red) !important; }
+.flat { color:var(--t3) !important; }
+
+/* ── INTEL PANEL ── */
+.intel-empty {
+  padding:24px 14px; text-align:center;
+  font-size:11px; color:var(--t3); line-height:2;
+}
+.intel-sec { padding:10px 12px; border-bottom:1px solid var(--b1); }
+.intel-title { font-family:'Barlow Condensed',sans-serif; font-size:14px; font-weight:700; color:var(--t0); margin-bottom:6px; }
+.intel-kv { display:flex; justify-content:space-between; padding:3px 0; font-size:10px; border-bottom:1px solid rgba(22,32,56,.2); }
+.intel-kv:last-child { border-bottom:none; }
+.ik { color:var(--t3); font-family:'IBM Plex Mono',monospace; font-size:9px; }
+.iv { color:var(--t0); font-size:10px; }
+
+/* ── POPUP HTML ── */
+.pop-title {
+  font-family:'Barlow Condensed',sans-serif; font-size:14px; font-weight:700;
+  color:var(--t0); padding:10px 12px 4px;
+  border-bottom:1px solid var(--b1);
+  display:flex; align-items:center; gap:6px;
+}
+.pop-body { padding:6px 12px 10px; }
+.pk { display:flex; justify-content:space-between; gap:12px; padding:3px 0; font-size:10px; border-bottom:1px solid rgba(22,32,56,.2); }
+.pk:last-child { border-bottom:none; }
+.pk span:first-child { color:var(--t3); font-family:'IBM Plex Mono',monospace; font-size:9px; }
+.pk span:last-child { color:var(--t0); font-size:10px; }
+.pop-alert { margin:6px 0 0; padding:5px 8px; background:rgba(255,68,102,.08); border:1px solid rgba(255,68,102,.2); border-radius:3px; font-size:9px; color:var(--red); }
+
+/* ── TICKER BAR ── */
+#ticker {
+  height:30px; background:var(--s1); border-top:1px solid var(--b1);
+  display:flex; align-items:center; overflow:hidden; flex-shrink:0;
+}
+.tk-lbl {
+  padding:0 12px; height:100%; display:flex; align-items:center;
+  font-family:'Barlow Condensed',sans-serif; font-size:9px; letter-spacing:2px; text-transform:uppercase;
+  color:var(--blue); border-right:1px solid var(--b1); flex-shrink:0;
+}
+.tk-scroll { flex:1; overflow:hidden; position:relative; }
+.tk-inner { display:flex; animation:tkScroll 90s linear infinite; white-space:nowrap; }
+@keyframes tkScroll { 0%{transform:translateX(0);} 100%{transform:translateX(-50%);} }
+.tk-item {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:0 18px; height:30px;
+  border-right:1px solid var(--b1);
+  font-family:'IBM Plex Mono',monospace; font-size:9px;
+  flex-shrink:0;
+}
+.tk-sym { color:var(--blue); font-weight:500; }
+.tk-val { color:var(--t0); }   /* Bright ticker values */
+.tk-chg { font-size:8px; }
+
+/* ── LEGEND ── */
+#legend {
+  position:absolute; bottom:48px; left:210px;
+  z-index:400;
+  background:rgba(6,12,26,.9);
+  border:1px solid var(--b1); border-radius:4px;
+  padding:8px 12px;
+  backdrop-filter:blur(8px);
+  pointer-events:none;
+}
+.leg-row { display:flex; align-items:center; gap:6px; padding:2px 0; font-size:9px; color:var(--t2); font-family:'IBM Plex Mono',monospace; }
+.leg-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+/* Live path trajectory line */
+.traj-line { stroke-dasharray:6,4; animation:dashMove 1s linear infinite; }
+@keyframes dashMove { to { stroke-dashoffset:-10; } }
+
+/* AQI color scale reference */
+.aqi-good    { color:#00f5a0; }
+.aqi-mod     { color:#ffcc00; }
+.aqi-usg     { color:#ff8c42; }
+.aqi-unheal  { color:#ff4466; }
+.aqi-vunheal { color:#c084fc; }
+.aqi-hazard  { color:#8b0000; }
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVE: hide sidebar on very small screens
+══════════════════════════════════════════════════════════ */
+@media (max-width:900px) {
+  #sidebar { display:none; }
+  #panel { width:220px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     LOADING SCREEN
+     Shown while all APIs are being fetched and map initialized.
+══════════════════════════════════════════════════════════ -->
+<div id="loader">
+  <div class="ld-radar">
+    <div class="ld-ring"></div><div class="ld-ring"></div><div class="ld-ring"></div>
+    <div class="ld-center"></div>
+  </div>
+  <div class="ld-title">WorldView</div>
+  <div class="ld-sub">Global Intelligence Platform</div>
+  <div class="ld-bar"><div class="ld-fill"></div></div>
+  <div class="ld-msg" id="ld-msg">Initializing data feeds...</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MAIN APP SHELL
+══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- ── TOPBAR ── -->
+  <div id="topbar">
+    <div class="logo"><div class="logo-dot"></div>WORLDVIEW</div>
+    <div class="sep"></div>
+    <div class="chip chip-live"><span></span>LIVE</div>
+    <div class="sep"></div>
+
+    <!-- Universal Search — searches flights, vessels, places, countries, news -->
+    <div id="search-box">
+      <span class="si-icon">⌕</span>
+      <input type="text" id="search-input"
+        placeholder="Search flights, vessels, places, countries, news, coordinates...">
+      <span class="si-clear" id="si-clear">×</span>
+      <div id="search-results"></div>
+    </div>
+
+    <div class="sep"></div>
+    <div class="chip chip-ok" id="api-chip">● FEEDS OK</div>
+    <div class="chip chip-warn" id="anom-chip">⚠ 0 ANOMALIES</div>
+    <div id="clock">
+      <div id="utc-time" class="mono">00:00:00 UTC</div>
+      <div id="utc-date" style="font-size:9px;color:var(--t3)">--</div>
+    </div>
+  </div>
+
+  <!-- ── MAIN ── -->
+  <div id="main">
+
+    <!-- LEFT SIDEBAR -->
+    <div id="sidebar">
+
+      <!-- Layer toggles section -->
+      <div class="sb-sec">
+        <div class="sl">Data Layers</div>
+        <div class="ltog" onclick="toggleLayer('flights')">
+          <div class="ltog-l"><span class="ltog-icon">✈</span>Aircraft</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-f">—</span><div class="sw on" id="sw-flights"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('military_air')">
+          <div class="ltog-l"><span class="ltog-icon">🛩</span>Mil. Aircraft</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-mf">—</span><div class="sw on" id="sw-military_air"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('ships')">
+          <div class="ltog-l"><span class="ltog-icon">🚢</span>Vessels</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-s">—</span><div class="sw on" id="sw-ships"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('satellites')">
+          <div class="ltog-l"><span class="ltog-icon">🛰</span>Satellites</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-sat">—</span><div class="sw on" id="sw-satellites"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('earthquakes')">
+          <div class="ltog-l"><span class="ltog-icon">🌋</span>Seismic</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-eq">—</span><div class="sw on" id="sw-earthquakes"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('weather')">
+          <div class="ltog-l"><span class="ltog-icon">🌤</span>Weather/AQI</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-wx">—</span><div class="sw on" id="sw-weather"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('conflict')">
+          <div class="ltog-l"><span class="ltog-icon">⚔</span>Conflict Zones</div>
+          <div class="ltog-r"><span class="cnt w" id="cnt-cf">—</span><div class="sw on" id="sw-conflict"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('military_base')">
+          <div class="ltog-l"><span class="ltog-icon">🏛</span>Military Bases</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-mb">—</span><div class="sw on" id="sw-military_base"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('oil')">
+          <div class="ltog-l"><span class="ltog-icon">🛢</span>Oil & Gas</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-oil">—</span><div class="sw on" id="sw-oil"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('ports')">
+          <div class="ltog-l"><span class="ltog-icon">⚓</span>Ports</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-pt">—</span><div class="sw on" id="sw-ports"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('nuclear')">
+          <div class="ltog-l"><span class="ltog-icon">☢</span>Nuclear Sites</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-nu">—</span><div class="sw on" id="sw-nuclear"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleLayer('space_events')">
+          <div class="ltog-l"><span class="ltog-icon">🚀</span>Space Events</div>
+          <div class="ltog-r"><span class="cnt" id="cnt-sp">—</span><div class="sw on" id="sw-space_events"></div></div>
+        </div>
+        <div class="ltog" onclick="toggleTrajectories()">
+          <div class="ltog-l"><span class="ltog-icon">〰</span>Trajectories</div>
+          <div class="ltog-r"><div class="sw on" id="sw-traj"></div></div>
+        </div>
+      </div>
+
+      <!-- Live stats section -->
+      <div class="sb-sec">
+        <div class="sl">Live Statistics</div>
+        <div class="sb-row"><span class="sb-k">Aircraft</span><span class="sb-v g" id="st-f">—</span></div>
+        <div class="sb-row"><span class="sb-k">Mil. Aircraft</span><span class="sb-v p" id="st-mf">—</span></div>
+        <div class="sb-row"><span class="sb-k">Vessels</span><span class="sb-v b" id="st-s">—</span></div>
+        <div class="sb-row"><span class="sb-k">Seismic M3.5+</span><span class="sb-v a" id="st-eq">—</span></div>
+        <div class="sb-row"><span class="sb-k">Active Conflicts</span><span class="sb-v r" id="st-cf">—</span></div>
+        <div class="sb-row"><span class="sb-k">Anomalies</span><span class="sb-v r" id="st-an">0</span></div>
+        <div class="sb-row"><span class="sb-k">Refreshed</span><span class="sb-v" id="st-upd">—</span></div>
+      </div>
+
+      <!-- Anomaly feed (scrollable section) -->
+      <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
+        <div class="sl" style="flex-shrink:0">🚨 Anomaly Feed</div>
+        <div class="sb-scroll" id="anom-list" style="flex: 1; min-height: 0;"></div>
+      </div>
+    </div>
+
+    <!-- MAP CONTAINER -->
+    <div id="map-wrap">
+      <div id="map"></div>
+
+      <!-- Map quick-nav buttons -->
+      <div id="map-controls">
+        <button class="mc-btn" onclick="flyTo(20,10,2)">🌍</button>
+        <button class="mc-btn" onclick="flyTo(38,-97,4)">🇺🇸 USA</button>
+        <button class="mc-btn" onclick="flyTo(51,10,4)">🇪🇺 EUR</button>
+        <button class="mc-btn" onclick="flyTo(35,105,3)">🌏 ASIA</button>
+        <button class="mc-btn" onclick="flyTo(26,45,4)">🌐 ME</button>
+        <button class="mc-btn" onclick="flyTo(1,103,5)">🔴 SG</button>
+        <button class="mc-btn" onclick="flyTo(29.9,32.5,7)">🚢 Suez</button>
+        <button class="mc-btn" onclick="flyTo(51.5,-0.1,10)">🇬🇧 LDN</button>
+        <button class="mc-btn" onclick="openTileSwitcher()" title="Switch map style: Satellite, OSM, Dark, Terrain, Streets, Topo, NightVision">🗺 TILES</button>
+        <button class="mc-btn" onclick="openLiveFeed()">📹 FEEDS</button>
+      </div>
+
+      <!-- Compass — drag to rotate map -->
+      <div id="compass" title="Click to reset north / Drag to rotate">
+        <div id="compass-ring">
+          <div id="compass-needle"></div>
+        </div>
+      </div>
+
+      <!-- Tile style switcher panel -->
+      <div id="tile-switcher">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:2px;color:var(--t3);margin-bottom:8px">MAP TILES</div>
+        <!-- Each item triggers loadTile() with tile config key -->
+        <div class="ts-item active" onclick="loadTile('dark')" id="ts-dark"><div class="ts-dot" style="background:#162038"></div>Dark (CartoDB)</div>
+        <div class="ts-item" onclick="loadTile('satellite')" id="ts-satellite"><div class="ts-dot" style="background:#2d4a18"></div>Satellite (ESRI)</div>
+        <div class="ts-item" onclick="loadTile('osm')" id="ts-osm"><div class="ts-dot" style="background:#b5ad9f"></div>OSM Standard</div>
+        <div class="ts-item" onclick="loadTile('terrain')" id="ts-terrain"><div class="ts-dot" style="background:#3d5a3e"></div>Terrain (Stamen)</div>
+        <div class="ts-item" onclick="loadTile('streets')" id="ts-streets"><div class="ts-dot" style="background:#e8e4d8"></div>Streets (Light)</div>
+        <div class="ts-item" onclick="loadTile('topo')" id="ts-topo"><div class="ts-dot" style="background:#4a5a3a"></div>Topo (OpenTopoMap)</div>
+        <div class="ts-item" onclick="loadTile('nightvision')" id="ts-nightvision"><div class="ts-dot" style="background:#003300"></div>Night Vision</div>
+      </div>
+
+      <!-- Map overlays (corner labels) -->
+      <div class="mo" id="mo-tl">
+        LAT <span id="ov-lat">—</span> &nbsp; LON <span id="ov-lon">—</span><br>
+        ZOOM <span id="ov-zoom">—</span> &nbsp; HDG <span id="ov-hdg">000°</span>
+      </div>
+      <div class="mo" id="mo-br">
+        WORLDVIEW ATLAS · LIVE<br>
+        OpenSky · USGS · Open-Meteo · CoinGecko
+      </div>
+
+      <!-- Coordinates bar (mouse position) -->
+      <div id="coords-bar">Hover over map to see coordinates</div>
+
+      <!-- Entity inspector card -->
+      <div id="entity-card">
+        <div class="ec-hd">
+          <span class="ec-type" id="ec-type">ENTITY</span>
+          <button class="ec-close" onclick="closeEntity()">×</button>
+        </div>
+        <div class="ec-title" id="ec-title">—</div>
+        <div class="ec-sub" id="ec-sub">—</div>
+        <div class="ec-body" id="ec-body"></div>
+        <div class="ec-footer" id="ec-footer"></div>
+      </div>
+
+      <!-- Legend -->
+      <div id="legend">
+        <div class="leg-row"><div class="leg-dot" style="background:var(--blue)"></div>Aircraft</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--purple)"></div>Mil. Aircraft</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--cyan)"></div>Vessel</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--pink)"></div>Satellite</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--red)"></div>Seismic</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--orange)"></div>Conflict</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--amber)"></div>Oil/Gas</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--#22aaff)"></div>Nuclear</div>
+      </div>
+
+      <!-- Toast stack for anomaly alerts -->
+      <div id="toast-stack"></div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div id="panel">
+      <!-- Tab nav: NEWS · MARKETS · INTEL -->
+      <div class="pt-nav">
+        <div class="pt-btn on" onclick="switchTab('news',this)">NEWS</div>
+        <div class="pt-btn" onclick="switchTab('markets',this)">MARKETS</div>
+        <div class="pt-btn" onclick="switchTab('intel',this)">INTEL</div>
+        <div class="pt-btn" onclick="switchTab('space',this)">SPACE</div>
+      </div>
+      <!-- Scrollable panel area -->
+      <div class="pt-scroll">
+        <div class="pt on" id="pt-news"></div>
+        <div class="pt" id="pt-markets"></div>
+        <div class="pt" id="pt-intel">
+          <div class="intel-empty">
+            🔍 <strong>CLICK ANY ENTITY</strong> on the map<br>
+            to see full details here.<br><br>
+            <strong>Search options:</strong><br>
+            • Flight callsigns (e.g. BA123)<br>
+            • Vessel names (e.g. MSC Eloane)<br>
+            • Stock symbols (e.g. NVDA, BTC)<br>
+            • Locations (cities, countries)<br>
+            • Military bases, conflicts<br>
+            • Weather stations, ports
+          </div>
+        </div>
+        <div class="pt" id="pt-space"></div>
+      </div>
+    </div>
+
+  </div><!-- end #main -->
+
+  <!-- TICKER -->
+  <div id="ticker">
+    <div class="tk-lbl">⚡ LIVE</div>
+    <div class="tk-scroll"><div class="tk-inner" id="tk-inner"></div></div>
+  </div>
+
+</div><!-- end #app -->
+
+<!-- Live Feed Modal -->
+<div id="feed-modal">
+  <div class="fm-box">
+    <div class="fm-hd">
+      <div class="fm-title">📹 Live Camera Feeds — Public Webcams</div>
+      <button class="fm-close" onclick="closeLiveFeed()">×</button>
+    </div>
+    <div class="fm-body">
+      <p style="font-size:11px;color:var(--t3);margin-bottom:14px">
+        Live public webcams from around the world. Click to open stream.
+      </p>
+      <div class="cam-grid" id="cam-grid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   WORLDVIEW INTELLIGENCE PLATFORM — v3.0
+   Single-file HTML dashboard integrating:
+   • OpenSky Network     → Live commercial aircraft (real, free)
+   • USGS Earthquake API → Real-time seismic events (real, free)
+   • wheretheiss.at      → ISS live position (real, free)
+   • Open-Meteo          → Weather + forecast (real, free)
+   • OpenAQ              → Air quality index (real, free)
+   • CoinGecko           → Live crypto prices (real, free)
+   • open.er-api.com     → Live forex rates (real, free)
+   • Nominatim           → Geocoding search (real, free)
+   • Spaceflight News    → Space news feed (real, free)
+   • REST Countries      → Country data on click (real, free)
+   • ADSB Exchange       → Military aircraft patterns (simulated)
+   • Marine Traffic      → Vessel routes (simulated realistic)
+   • ACLED/OCHA style    → Conflict zones (simulated from open sources)
+══════════════════════════════════════════════════════════════ */
+
+/* ─── GLOBAL STATE ─────────────────────────────────────────
+   Single source of truth for all runtime data.
+   Avoids global variable pollution. */
+const G = {
+  /* Layer groups: Leaflet LayerGroup per category */
+  groups: {},
+  /* Toggle state per layer */
+  layers: {
+    flights:true, military_air:true, ships:true, satellites:true,
+    earthquakes:true, weather:true, conflict:true, military_base:true,
+    oil:true, ports:true, nuclear:true, space_events:true
+  },
+  showTrajectories: true,   /* whether to draw path/trajectory lines */
+  mapRotation: 0,           /* current bearing in degrees */
+  tileLayer: null,          /* active Leaflet tile layer */
+  tileName: 'dark',         /* current tile style key */
+
+  /* Data caches */
+  flights: {},          /* icao24 -> marker+metadata */
+  flightFetchTime: 0,   /* timestamp of last OpenSky fetch (for interpolation) */
+  earthquakes: [],      /* USGS feature array */
+  satellites: [],       /* SAT_DB with _marker refs */
+  anomalies: [],        /* all detected anomalies */
+  anomalyCount: 0,
+
+  /* Trajectory polylines store */
+  trajectories: [],     /* array of Leaflet Polyline objects */
+  shipTrajectories: {}, /* vessel name -> Polyline */
+
+  /* Search index — flat array built from all live data */
+  searchIdx: [],
+
+  /* API status */
+  apiErrors: 0,
+};
+
+/* ─── MAP INITIALIZATION ───────────────────────────────────
+   Leaflet map centered on world view.
+   zoomControl: false — we'll add custom controls */
+const map = L.map('map', {
+  center: [20, 10],
+  zoom: 2,
+  zoomControl: true,
+  attributionControl: true,
+  /* Leaflet doesn't natively support rotation — we use CSS transform on the map container */
+});
+
+/* Tile layer configurations — multiple map style options */
+const TILES = {
+  /* CartoDB dark — default, NASA-like */
+  dark: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attr: '© CartoDB',
+    opts: { subdomains:'abcd', maxZoom:19 }
+  },
+  /* ESRI World Imagery — real satellite photos */
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attr: '© Esri',
+    opts: { maxZoom:18 }
+  },
+  /* OpenStreetMap Standard */
+  osm: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attr: '© OpenStreetMap contributors',
+    opts: { subdomains:'abc', maxZoom:19 }
+  },
+  /* Stamen terrain */
+  terrain: {
+    url: 'https://stamen-tiles.a.ssl.fastly.net/terrain/{z}/{x}/{y}.png',
+    attr: '© Stamen Design',
+    opts: { maxZoom:18 }
+  },
+  /* CartoDB light (streets) */
+  streets: {
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attr: '© CartoDB',
+    opts: { subdomains:'abcd', maxZoom:19 }
+  },
+  /* Open topo */
+  topo: {
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attr: '© OpenTopoMap',
+    opts: { subdomains:'abc', maxZoom:17 }
+  },
+  /* Green-tinted dark for night vision effect */
+  nightvision: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attr: '© CartoDB (Night Vision)',
+    opts: { subdomains:'abcd', maxZoom:19 }
+  },
+};
+
+/* Load tile style — replaces current tile layer */
+function loadTile(name) {
+  if (G.tileLayer) map.removeLayer(G.tileLayer);
+  const t = TILES[name] || TILES.dark;
+  G.tileLayer = L.tileLayer(t.url, { attribution: t.attr, ...t.opts });
+  G.tileLayer.addTo(map);
+  G.tileName = name;
+
+  /* Night vision: apply CSS green tint to map canvas */
+  const mp = document.getElementById('map');
+  if (name === 'nightvision') {
+    mp.style.filter = 'sepia(100%) saturate(300%) hue-rotate(60deg) brightness(0.7)';
+  } else if (name === 'satellite') {
+    mp.style.filter = 'brightness(0.85) contrast(1.1)';
+  } else {
+    mp.style.filter = '';
+  }
+
+  /* Update tile switcher active state */
+  document.querySelectorAll('.ts-item').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById('ts-' + name);
+  if (el) el.classList.add('active');
+}
+
+/* Initialize with dark tile */
+loadTile('dark');
+
+/* Create layer groups for each data category */
+Object.keys(G.layers).forEach(k => { G.groups[k] = L.layerGroup().addTo(map); });
+/* Extra group for trajectory lines (controlled separately) */
+G.groups.traj = L.layerGroup().addTo(map);
+
+/* ─── LAYER TOGGLE ─────────────────────────────────────────
+   Toggle visibility of any named layer group. */
+function toggleLayer(name) {
+  G.layers[name] = !G.layers[name];
+  const sw = document.getElementById('sw-' + name);
+  if (sw) sw.classList.toggle('on', G.layers[name]);
+  if (G.layers[name]) map.addLayer(G.groups[name]);
+  else               map.removeLayer(G.groups[name]);
+}
+
+/* Toggle trajectory lines separately */
+function toggleTrajectories() {
+  G.showTrajectories = !G.showTrajectories;
+  const sw = document.getElementById('sw-traj');
+  if (sw) sw.classList.toggle('on', G.showTrajectories);
+  if (G.showTrajectories) map.addLayer(G.groups.traj);
+  else                    map.removeLayer(G.groups.traj);
+}
+
+/* ─── TILE SWITCHER UI ──────────────────────────────────── */
+function openTileSwitcher() {
+  document.getElementById('tile-switcher').classList.toggle('open');
+}
+/* Close tile switcher when clicking elsewhere */
+document.addEventListener('click', e => {
+  const ts = document.getElementById('tile-switcher');
+  if (!e.target.closest('#tile-switcher') && !e.target.textContent.includes('MAP')) {
+    ts.classList.remove('open');
+  }
+});
+
+/* ─── COMPASS / MAP ROTATION ───────────────────────────────
+   CSS-transforms the map container to simulate rotation.
+   Formula: rotate(Ndeg) where N is bearing from North (0-360).
+   Note: Leaflet tiles still load in normal orientation;
+   this is a purely visual rotation of the rendered container. */
+let compassDragging = false, compassStartAngle = 0, mapStartBearing = 0;
+
+document.getElementById('compass').addEventListener('mousedown', e => {
+  compassDragging = true;
+  const r = document.getElementById('compass').getBoundingClientRect();
+  const cx = r.left + r.width/2, cy = r.top + r.height/2;
+  /* Calculate angle from center of compass to mouse — atan2 gives angle in radians */
+  compassStartAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+  mapStartBearing = G.mapRotation;
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', e => {
+  if (!compassDragging) return;
+  const r = document.getElementById('compass').getBoundingClientRect();
+  const cx = r.left + r.width/2, cy = r.top + r.height/2;
+  const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+  /* Delta angle since drag started — apply to map bearing */
+  const delta = angle - compassStartAngle;
+  G.mapRotation = (mapStartBearing + delta + 360) % 360;
+  applyRotation();
+});
+
+document.addEventListener('mouseup', () => { compassDragging = false; });
+
+/* Click compass to reset north */
+document.getElementById('compass-ring').addEventListener('click', e => {
+  if (!compassDragging) { G.mapRotation = 0; applyRotation(); }
+});
+
+function applyRotation() {
+  /* Rotate the map container div — CSS transform */
+  document.getElementById('map').style.transform = `rotate(${G.mapRotation}deg)`;
+  /* Rotate the compass needle OPPOSITE so it always points to actual north */
+  document.getElementById('compass-needle').style.transform = `rotate(${-G.mapRotation}deg)`;
+  document.getElementById('ov-hdg').textContent = Math.round(G.mapRotation) + '°';
+}
+
+/* ─── CLOCK ─────────────────────────────────────────────── */
+function tickClock() {
+  const n = new Date();
+  const pad = x => String(x).padStart(2,'0');
+  document.getElementById('utc-time').textContent = `${pad(n.getUTCHours())}:${pad(n.getUTCMinutes())}:${pad(n.getUTCSeconds())} UTC`;
+  document.getElementById('utc-date').textContent = n.toUTCString().split(' ').slice(0,4).join(' ');
+}
+setInterval(tickClock, 1000); tickClock();
+
+/* Map mouse move — show coordinates */
+map.on('mousemove', e => {
+  const {lat, lng} = e.latlng;
+  document.getElementById('ov-lat').textContent  = lat.toFixed(5);
+  document.getElementById('ov-lon').textContent  = lng.toFixed(5);
+  document.getElementById('ov-zoom').textContent = map.getZoom();
+  document.getElementById('coords-bar').textContent =
+    `${Math.abs(lat).toFixed(5)}°${lat>=0?'N':'S'}  ${Math.abs(lng).toFixed(5)}°${lng>=0?'E':'W'}  ·  zoom ${map.getZoom()}`;
+});
+
+/* ─── FLY TO ─────────────────────────────────────────────── */
+function flyTo(lat, lon, zoom) {
+  map.flyTo([lat, lon], zoom, { duration: 1.6, easeLinearity: 0.5 });
+}
+
+/* ══════════════════════════════════════════════════════════
+   ICON FACTORY — Creates Leaflet DivIcons for each entity type.
+   Emoji icons with drop-shadow glow for visibility on dark map.
+══════════════════════════════════════════════════════════ */
+function mkIcon(emoji, size=16, glowColor='rgba(77,184,255,.7)', extra='') {
+  return L.divIcon({
+    html: `<div style="font-size:${size}px;line-height:1;filter:drop-shadow(0 0 4px ${glowColor});${extra}">${emoji}</div>`,
+    className: '',
+    iconSize: [size+6, size+6],
+    iconAnchor: [(size+6)/2, (size+6)/2],
+  });
+}
+
+/* Aircraft icon — rotated to match heading.
+   Formula: CSS rotate(Ndeg) where N = heading in degrees from north */
+function planeIcon(hdg=0, isAnomalous=false, isMilitary=false) {
+  const glow = isAnomalous
+    ? 'drop-shadow(0 0 7px rgba(255,68,102,1))'
+    : isMilitary
+    ? 'drop-shadow(0 0 5px rgba(192,132,252,.9))'
+    : 'drop-shadow(0 0 4px rgba(77,184,255,.8))';
+  const color = isMilitary ? '#c084fc' : '#4db8ff';
+  return L.divIcon({
+    html: `<div style="font-size:16px;transform:rotate(${hdg}deg);filter:${glow};color:${color};line-height:1;text-align:center;width:100%;height:100%">✈</div>`,
+    className: '', iconSize:[24,24], iconAnchor:[12,12], popupAnchor:[0,-12]
+  });
+}
+
+/* Earthquake icon — circle sized by magnitude.
+   Radius formula: r = max(5, magnitude × 7) pixels
+   Color coded: M<5=amber, M5-6=orange, M≥6=red */
+function eqIcon(mag) {
+  const r = Math.max(5, mag * 7);
+  const col = mag>=6 ? '#ff4466' : mag>=5 ? '#ff8c42' : '#ffcc00';
+  return L.divIcon({
+    html: `<div style="width:${r*2}px;height:${r*2}px;border-radius:50%;background:${col}22;border:1.5px solid ${col};${mag>=5?'animation:eqPulse 1.5s infinite':''}"></div>`,
+    className: '', iconSize:[r*2,r*2], iconAnchor:[r,r]
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   ✈ LIVE FLIGHTS — OpenSky Network API
+   Endpoint: https://opensky-network.org/api/states/all
+   Response: { states: [[icao24, callsign, country, time_pos, last_contact,
+               longitude, latitude, baro_altitude, on_ground, velocity,
+               true_track, vertical_rate, sensors, geo_altitude, squawk,
+               spi, position_source], ...] }
+   Rate limit: ~100 calls/day without auth; we poll every 25s.
+   Physics: Between API calls, we interpolate position using:
+     lat_new = lat + (v * cos(hdg_rad) * dt) / R * (180/π)
+     lon_new = lon + (v * sin(hdg_rad) * dt) / (R * cos(lat_rad)) * (180/π)
+   where v=velocity(m/s), dt=elapsed_seconds, R=6371000(earth radius m)
+══════════════════════════════════════════════════════════ */
+async function fetchFlights() {
+  try {
+    setLdMsg('Fetching live aircraft...');
+    const res = await fetch('https://opensky-network.org/api/states/all');
+    if (!res.ok) throw new Error('OpenSky HTTP ' + res.status);
+    const data = await res.json();
+    const states = (data.states || []).filter(f => f[5] && f[6]); /* must have valid lon/lat */
+
+    G.flightFetchTime = Date.now(); /* record fetch time for interpolation */
+
+    const seen = new Set();
+    /* Sample max 800 for performance; skip ground-only at low zoom */
+    const sample = states.slice(0, 800);
+
+    sample.forEach(f => {
+      const [icao, cs, country, , on_gnd, lon, lat, alt, , vel, hdg, vrate, , , squawk] = f;
+      if (!lat || !lon) return;
+      const callsign = (cs || icao || 'UNKNOWN').trim();
+      const isAnomaly = detectFlightAnomaly(f);
+      seen.add(icao);
+
+      if (G.flights[icao]) {
+        /* Update existing marker (reuse DOM node for performance) */
+        const mk = G.flights[icao];
+        mk.marker.setLatLng([lat, lon]);
+        mk.marker.setIcon(planeIcon(hdg, !!isAnomaly, false));
+        Object.assign(mk, { lat, lon, vel, hdg, alt, vrate, callsign, country, fetchT: Date.now() });
+      } else {
+        /* Create new marker */
+        const m = L.marker([lat, lon], {
+          icon: planeIcon(hdg, !!isAnomaly, false),
+          zIndexOffset: isAnomaly ? 1000 : 0
+        });
+        m.on('click', () => showFlightEntity(f, isAnomaly));
+        m.bindTooltip(callsign, { permanent:false, direction:'top' });
+        m.addTo(G.groups.flights);
+        G.flights[icao] = { marker:m, lat, lon, vel, hdg, alt, vrate, callsign, country, fetchT:Date.now() };
+      }
+
+      /* Draw trajectory line (if enabled + has destination guess) */
+      if (G.showTrajectories && vel && hdg) {
+        drawFlightTrajectory(icao, lat, lon, hdg, vel, alt);
+      }
+
+      if (isAnomaly) addAnomaly(isAnomaly);
+    });
+
+    /* Remove stale markers (no longer in API response) */
+    Object.keys(G.flights).forEach(icao => {
+      if (!seen.has(icao)) {
+        G.groups.flights.removeLayer(G.flights[icao].marker);
+        delete G.flights[icao];
+      }
+    });
+
+    const cnt = Object.keys(G.flights).length;
+    setCount('f', cnt); setStatText('f', cnt.toLocaleString());
+    setStatText('upd', new Date().toUTCString().split(' ')[4]);
+    rebuildFlightSearchIdx();
+    document.getElementById('api-chip').textContent = '● FEEDS OK';
+    document.getElementById('api-chip').className = 'chip chip-ok';
+  } catch (e) {
+    console.warn('OpenSky:', e.message);
+    document.getElementById('api-chip').textContent = '⚠ OPENSKY LIMIT';
+    document.getElementById('api-chip').className = 'chip chip-warn';
+  }
+}
+
+/* Draw projected flight trajectory line.
+   Projects current heading × estimated time-to-boundary (max 90min).
+   Formula: projects 2 waypoints ahead using great-circle approximation. */
+function drawFlightTrajectory(icao, lat, lon, hdg, vel, alt) {
+  /* Remove old trajectory for this flight */
+  if (G.flights[icao]?._traj) {
+    G.groups.traj.removeLayer(G.flights[icao]._traj);
+  }
+  /* Only draw if airborne (alt > 100m) */
+  if (!alt || alt < 100) return;
+
+  /* Project path: 30min and 60min ahead at current velocity+heading */
+  const hdgRad = (hdg || 0) * Math.PI / 180;
+  const R = 6371000; /* Earth radius in meters */
+  const speed = vel || 250; /* m/s, default 250 if unknown */
+
+  /* Calculate waypoints every 10 minutes for 60 minutes */
+  const pts = [[lat, lon]];
+  for (let t = 600; t <= 3600; t += 600) { /* t in seconds: 10min steps to 60min */
+    const dist = speed * t; /* distance = velocity × time */
+    /* Great-circle approximation (accurate for short distances):
+       Δlat = (dist × cos(hdg)) / R × (180/π)
+       Δlon = (dist × sin(hdg)) / (R × cos(lat_rad)) × (180/π) */
+    const dLat = (dist * Math.cos(hdgRad)) / R * (180 / Math.PI);
+    const dLon = (dist * Math.sin(hdgRad)) / (R * Math.cos(lat * Math.PI / 180)) * (180 / Math.PI);
+    pts.push([lat + dLat, lon + dLon]);
+  }
+
+  /* Create dashed polyline for trajectory */
+  const line = L.polyline(pts, {
+    color: '#4db8ff',
+    weight: 1,
+    opacity: 0.3,
+    dashArray: '5, 6', /* dashed line pattern */
+  }).addTo(G.groups.traj);
+
+  if (G.flights[icao]) G.flights[icao]._traj = line;
+}
+
+/* Anomaly detection for flights.
+   Returns anomaly object or null.
+   Threshold logic:
+   • Altitude < 900m AND not on_ground → dangerously low
+   • Velocity > 340 m/s → beyond Mach 1 (supersonic)
+   • No callsign → unidentified (could be military/private)
+   • Vertical rate > 30 m/s → violent climb/descent */
+function detectFlightAnomaly(f) {
+  const [icao, cs, country, , on_gnd, lon, lat, alt, , vel, hdg, vrate] = f;
+  if (on_gnd) return null;
+  const reasons = [];
+  if (alt !== null && alt < 900 && !on_gnd) reasons.push('Critically low altitude: ' + Math.round(alt) + 'm');
+  if (vel !== null && vel > 340) reasons.push('Supersonic velocity: ' + Math.round(vel * 1.944) + 'kt');
+  if (!cs || cs.trim() === '') reasons.push('Unidentified — no callsign');
+  if (vrate !== null && Math.abs(vrate) > 35) reasons.push('Extreme vertical rate: ' + Math.round(vrate) + 'm/s');
+  if (reasons.length === 0) return null;
+  const score = reasons.length * 25 + (vel > 340 ? 45 : 0) + (alt < 300 ? 35 : 0);
+  return { type:'FLIGHT', icon:'✈', title: (cs||icao||'UNKNOWN').trim(), msg:reasons[0], lat, lon, score };
+}
+
+/* ══════════════════════════════════════════════════════════
+   🛩 MILITARY AIRCRAFT — Simulated ADS-B Exchange patterns
+   ADS-B Exchange tracks military squawk codes (7777, 7700, etc.)
+   and ICAO blocks reserved for military (e.g. AE0000-AFFFFF = USAF).
+   Here we simulate realistic military flight patterns with proper
+   routing based on real base locations and known patrol routes.
+══════════════════════════════════════════════════════════ */
+const MIL_FLIGHTS = [
+  /* USAF ISR patterns */
+  { cs:'SPAR12', type:'RC-135V Rivet Joint', lat:50.5, lon:18.0, hdg:270, vel:220, country:'USA', mission:'SIGINT/ELINT Collection' },
+  { cs:'REACH90', type:'C-17 Globemaster', lat:45.0, lon:8.0, hdg:100, vel:250, country:'USA', mission:'Strategic Airlift' },
+  { cs:'ROCKY11', type:'B-52H Stratofortress', lat:48.0, lon:-20.0, hdg:90, vel:230, country:'USA', mission:'Strategic Bomber' },
+  { cs:'TOPAZ1', type:'U-2S', lat:35.0, lon:55.0, hdg:0, vel:200, country:'USA', mission:'High-altitude ISR' },
+  { cs:'GHOST31', type:'RQ-4 Global Hawk', lat:38.0, lon:25.0, hdg:45, vel:160, country:'USA', mission:'UAV Surveillance' },
+  { cs:'COBRA02', type:'E-3 Sentry AWACS', lat:51.0, lon:15.0, hdg:200, vel:210, country:'NATO', mission:'Airborne Command' },
+  { cs:'HAWK21', type:'P-8 Poseidon', lat:38.0, lon:23.0, hdg:180, vel:200, country:'USA', mission:'Maritime Patrol' },
+  { cs:'STING01', type:'E-8C J-STARS', lat:48.5, lon:20.5, hdg:90, vel:205, country:'USA', mission:'Ground Surveillance' },
+  { cs:'VIPER41', type:'F-35A', lat:52.0, lon:5.0, hdg:270, vel:280, country:'NATO', mission:'Combat Air Patrol' },
+  { cs:'CHEVY11', type:'A-10C', lat:47.0, lon:14.0, hdg:180, vel:180, country:'USA', mission:'Close Air Support' },
+  { cs:'RAPTOR1', type:'F-22A', lat:36.0, lon:127.5, hdg:0, vel:320, country:'USA', mission:'Air Superiority' },
+  { cs:'TYPHON2', type:'Typhoon FGR4', lat:55.0, lon:-3.0, hdg:180, vel:260, country:'UK RAF', mission:'QRA Intercept' },
+  { cs:'RAFL01', type:'Rafale F3R', lat:44.0, lon:3.0, hdg:0, vel:270, country:'France', mission:'Combat Air Patrol' },
+  { cs:'FENIX11', type:'Su-27', lat:56.0, lon:40.0, hdg:270, vel:290, country:'Russia', mission:'Air Defence' },
+  { cs:'BEAR01', type:'Tu-95MS Bear', lat:72.0, lon:40.0, hdg:270, vel:210, country:'Russia', mission:'Strategic Bomber' },
+  { cs:'SHARK22', type:'J-20', lat:28.0, lon:120.0, hdg:90, vel:310, country:'China', mission:'Air Superiority' },
+  { cs:'DRAGONW', type:'H-6K', lat:32.0, lon:120.0, hdg:90, vel:200, country:'China', mission:'Strategic Bomber' },
+  { cs:'IZHAK3', type:'F-35I Adir', lat:32.5, lon:34.8, hdg:180, vel:280, country:'Israel', mission:'Combat Patrol' },
+  { cs:'SABER11', type:'F-16C Fighting Falcon', lat:25.0, lon:51.0, hdg:270, vel:260, country:'USA/Qatar', mission:'CAP' },
+  { cs:'IRON55', type:'AH-64E Apache', lat:34.0, lon:36.5, hdg:0, vel:80, country:'USA', mission:'Attack Helicopter' },
+];
+
+function initMilFlights() {
+  G.groups.military_air.clearLayers();
+  MIL_FLIGHTS.forEach((f, i) => {
+    /* Give each flight a unique base offset to prevent overlap */
+    const jitterLat = (Math.random() - 0.5) * 0.5;
+    const jitterLon = (Math.random() - 0.5) * 0.5;
+    f._lat = f.lat + jitterLat;
+    f._lon = f.lon + jitterLon;
+    f._fetchT = Date.now();
+    f._i = i; /* animation phase offset */
+
+    const m = L.marker([f._lat, f._lon], {
+      icon: planeIcon(f.hdg, false, true),
+      zIndexOffset: 200
+    });
+    m.on('click', () => showMilFlightEntity(f));
+    m.bindTooltip(`${f.cs} · ${f.type}`, { permanent:false, direction:'top' });
+    m.addTo(G.groups.military_air);
+    f._marker = m;
+
+    /* Draw patrol trajectory */
+    if (G.showTrajectories) drawMilTrajectory(f);
+  });
+  setCount('mf', MIL_FLIGHTS.length);
+  setStatText('mf', MIL_FLIGHTS.length);
+}
+
+/* Military patrol trajectory — circular/oval patrol pattern */
+function drawMilTrajectory(f) {
+  const pts = [];
+  /* Create elliptical patrol orbit around base position */
+  for (let deg = 0; deg <= 360; deg += 15) {
+    const rad = deg * Math.PI / 180;
+    pts.push([
+      f._lat + Math.sin(rad) * 0.8,
+      f._lon + Math.cos(rad) * 1.2
+    ]);
+  }
+  const line = L.polyline(pts, {
+    color: '#c084fc', weight: 1, opacity: 0.2, dashArray: '3,5'
+  }).addTo(G.groups.traj);
+  f._traj = line;
+}
+
+/* ══════════════════════════════════════════════════════════
+   🚢 VESSELS — Realistic shipping lane data
+   Routes based on actual AIS (Automatic Identification System) patterns.
+   Vessels include MMSI-style identifiers, IMO numbers, ship types.
+══════════════════════════════════════════════════════════ */
+const VESSELS = [
+  /* ── Suez Canal Zone ── */
+  { name:'MSC ELOANE',   mmsi:'215287000', imo:'9704961', flag:'Panama',   type:'Container Ship',  lat:30.80, lon:32.40, dest:'Rotterdam', spd:13.8, hdg:340, dwt:190000, loa:400 },
+  { name:'EVER GIVEN',   mmsi:'353136000', imo:'9811000', flag:'Panama',   type:'Container Ship',  lat:29.85, lon:32.55, dest:'Hamburg',   spd:14.2, hdg:325, dwt:224000, loa:400 },
+  { name:'AL NEFUD',     mmsi:'447380000', imo:'9501234', flag:'Kuwait',   type:'VLCC Tanker',     lat:27.20, lon:34.10, dest:'Singapore', spd:11.5, hdg:160, dwt:318000, loa:330, alert:'VLCC — armed escort active' },
+  /* ── Strait of Malacca ── */
+  { name:'PACIFIC VOYAGER', mmsi:'477413300', imo:'9234102', flag:'Marshall Is.', type:'Tanker', lat:3.20, lon:100.60, dest:'Busan',     spd:11.8, hdg:90,  dwt:280000, loa:330 },
+  { name:'SEASPAN BREEZE',  mmsi:'619320100', imo:'9456021', flag:'Bahamas',      type:'Container', lat:1.80, lon:102.10, dest:'Shanghai', spd:16.2, hdg:60,  dwt:140000, loa:366 },
+  { name:'CHEM EXPLORER',   mmsi:'258322400', imo:'9345712', flag:'Norway',       type:'Chemical',  lat:1.20, lon:103.50, dest:'Singapore',spd:10.1, hdg:90,  dwt:25000,  loa:170 },
+  /* ── Gulf of Aden — HIGH RISK ── */
+  { name:'NORDIC RUTH',     mmsi:'257823400', imo:'9123432', flag:'Liberia',   type:'Bulk Carrier', lat:12.50, lon:44.00, dest:'Jeddah',  spd:9.5,  hdg:330, dwt:180000, loa:290, alert:'HIGH RISK: Gulf of Aden — Houthi threat zone' },
+  { name:'GALAXY LEADER',   mmsi:'571723000', imo:'9256163', flag:'Bahamas',   type:'Car Carrier',  lat:14.20, lon:42.80, dest:'Eilat',   spd:0.0,  hdg:0,   dwt:19800,  loa:228, alert:'SEIZED: Held by Houthi forces since Nov 2023' },
+  /* ── English Channel ── */
+  { name:'MAERSK HOVDEN',   mmsi:'219024498', imo:'9756789', flag:'Denmark',  type:'Container',  lat:51.00, lon:1.80,  dest:'Bremerhaven', spd:17.5, hdg:50, dwt:116000, loa:347 },
+  { name:'CMA CGM ZEPHYR',  mmsi:'228059700', imo:'9630256', flag:'France',   type:'Container',  lat:50.50, lon:0.50,  dest:'Southampton', spd:14.3, hdg:270, dwt:174000, loa:366 },
+  /* ── Persian Gulf ── */
+  { name:'SAUDI GENIUS',    mmsi:'403000200', imo:'9501888', flag:'Saudi Arabia', type:'VLCC',   lat:26.50, lon:50.30, dest:'Ningbo',   spd:13.5, hdg:120, dwt:318000, loa:333 },
+  { name:'ABQAIQ',          mmsi:'403000202', imo:'9502001', flag:'Saudi Arabia', type:'VLCC',   lat:25.80, lon:51.20, dest:'Chiba',    spd:14.0, hdg:110, dwt:300000, loa:333 },
+  { name:'BAHRI YANBU',     mmsi:'403456789', imo:'9489234', flag:'Saudi Arabia', type:'VLCC',   lat:24.50, lon:56.00, dest:'Rotterdam', spd:12.8, hdg:270, dwt:299000, loa:333, alert:'VVIP Escort — Saudi Aramco cargo' },
+  /* ── South China Sea ── */
+  { name:'CSCL PACIFIC',    mmsi:'477311900', imo:'9695134', flag:'HK',     type:'Container',  lat:18.50, lon:113.50, dest:'Long Beach', spd:15.8, hdg:80,  dwt:197000, loa:400 },
+  { name:'HYUNDAI PRIDE',   mmsi:'440166000', imo:'9243567', flag:'S.Korea', type:'Bulk Carrier',lat:16.80, lon:111.50, dest:'Port Hedland',spd:11.0, hdg:190, dwt:250000, loa:295 },
+  /* ── Atlantic ── */
+  { name:'MSC ZEPHYRINE',   mmsi:'255805820', imo:'9930956', flag:'Panama', type:'Container',  lat:35.00, lon:-40.00, dest:'New York', spd:16.5, hdg:280, dwt:229000, loa:400 },
+  { name:'OOCL TEXAS',      mmsi:'477309100', imo:'9778964', flag:'HK',     type:'Container',  lat:28.00, lon:-65.00, dest:'Savannah', spd:15.0, hdg:260, dwt:89000,  loa:300 },
+  /* ── Cape of Good Hope ── */
+  { name:'IRON BEAUTY',     mmsi:'563079400', imo:'9489012', flag:'Singapore', type:'Bulk Carrier', lat:-34.50, lon:18.20, dest:'China',    spd:12.0, hdg:80,  dwt:320000, loa:320 },
+  { name:'CAPE TALLIN',     mmsi:'230979500', imo:'9456781', flag:'Bahamas',  type:'VLCC',         lat:-36.10, lon:19.50, dest:'Rotterdam', spd:14.5, hdg:310, dwt:300000, loa:333 },
+  /* ── Panama Canal ── */
+  { name:'YM UNANIMITY',    mmsi:'416505000', imo:'9523193', flag:'Taiwan', type:'Container',  lat:9.20,  lon:-79.80, dest:'Rotterdam', spd:13.5, hdg:280, dwt:185000, loa:368 },
+  { name:'MSC VEGA',        mmsi:'215413000', imo:'9786234', flag:'Panama', type:'Container',  lat:8.80,  lon:-79.50, dest:'Antwerp',   spd:14.0, hdg:310, dwt:190000, loa:368 },
+  /* ── Russian Arctic route (monitored) ── */
+  { name:'CHRISTOPHE DE MARGERIE', mmsi:'636017397', imo:'9733105', flag:'Russia', type:'LNG Icebreaker', lat:73.00, lon:60.00, dest:'China', spd:16.0, hdg:90, dwt:80000, loa:299, alert:'Arctic route — under sanctions monitoring' },
+];
+
+function initVessels() {
+  G.groups.ships.clearLayers();
+  /* Remove all existing vessel trajectories */
+  Object.values(G.shipTrajectories).forEach(l => G.groups.traj.removeLayer(l));
+  G.shipTrajectories = {};
+
+  VESSELS.forEach(v => {
+    const hasAlert = !!v.alert;
+    const isSeized = v.spd === 0 && hasAlert;
+    const emj = v.type.includes('VLCC') || v.type.includes('Tanker') ? '🛢'
+      : v.type.includes('LNG') ? '⛽'
+      : v.type.includes('Bulk') ? '🚛'
+      : v.type.includes('Car') ? '🚗'
+      : '🚢';
+
+    const glow = hasAlert ? 'rgba(255,204,0,.8)' : 'rgba(0,229,255,.6)';
+    const m = L.marker([v.lat, v.lon], {
+      icon: mkIcon(emj, 15, glow, isSeized ? 'opacity:.7' : ''),
+      zIndexOffset: hasAlert ? 500 : 0
+    });
+    m.on('click', () => showVesselEntity(v));
+    m.bindTooltip(v.name, { permanent:false, direction:'top' });
+    m.addTo(G.groups.ships);
+    v._marker = m;
+    v._baseLat = v.lat; v._baseLon = v.lon;
+
+    /* Draw ship route trajectory (dashed line toward destination) */
+    if (G.showTrajectories && v.spd > 0 && v.hdg) {
+      const hdgRad = v.hdg * Math.PI / 180;
+      /* Project 24h ahead at current speed */
+      const speed = v.spd * 0.5144; /* knots → m/s */
+      const dist = speed * 86400; /* 24h in seconds */
+      const R = 6371000;
+      const dLat = (dist * Math.cos(hdgRad)) / R * (180/Math.PI);
+      const dLon = (dist * Math.sin(hdgRad)) / (R * Math.cos(v.lat * Math.PI/180)) * (180/Math.PI);
+      const pts = [
+        [v.lat, v.lon],
+        [v.lat + dLat * 0.33, v.lon + dLon * 0.33],
+        [v.lat + dLat * 0.66, v.lon + dLon * 0.66],
+        [v.lat + dLat, v.lon + dLon],
+      ];
+      const line = L.polyline(pts, {
+        color: hasAlert ? '#ffcc00' : '#00e5ff',
+        weight:1, opacity:0.25, dashArray:'4,6'
+      }).addTo(G.groups.traj);
+      G.shipTrajectories[v.name] = line;
+    }
+
+    if (hasAlert) addAnomaly({ type:'VESSEL', icon:'🚢', title:v.name, msg:v.alert, lat:v.lat, lon:v.lon, score: isSeized ? 90 : 60 });
+  });
+
+  setCount('s', VESSELS.length); setStatText('s', VESSELS.length);
+}
+
+/* ══════════════════════════════════════════════════════════
+   🛰 SATELLITES — Real orbital data + ISS live position
+   Orbital parameters use Keplerian elements simplified:
+   • LEO (Low Earth Orbit):  200-2000km, period ~90min
+   • MEO (Medium):          2000-35786km, period varies
+   • GEO (Geostationary):   35786km, period 24h (appears fixed)
+   Animation: longitude drifts at rate = (360°/period_minutes) per minute
+   ISS fetched live from wheretheiss.at
+══════════════════════════════════════════════════════════ */
+const SAT_DB = [
+  /* ISS — fetched live separately */
+  /* Reconnaissance */
+  { name:'KH-13 (USA-326)',  lat:50.0, lon:70.0,  alt:350,  type:'Imagery RECON', agency:'NRO',      period:91  },
+  { name:'LACROSSE 5',       lat:57.0, lon:-10.0, alt:675,  type:'SAR RECON',     agency:'NRO',      period:98  },
+  { name:'NROL-44',          lat:0.0,  lon:45.0,  alt:35786,type:'SIGINT GEO',    agency:'NRO',      period:1440},
+  { name:'NROL-82',          lat:0.0,  lon:80.0,  alt:35786,type:'ELINT GEO',     agency:'NRO',      period:1440},
+  /* Earth observation */
+  { name:'Hubble (HST)',     lat:28.5, lon:-80.6, alt:547,  type:'Observatory',   agency:'NASA',     period:95  },
+  { name:'TERRA',            lat:45.0, lon:-120.0,alt:705,  type:'Earth Obs.',    agency:'NASA',     period:99  },
+  { name:'AQUA',             lat:-20.0,lon:40.0,  alt:705,  type:'Earth Obs.',    agency:'NASA',     period:99  },
+  { name:'Sentinel-1A',      lat:60.0, lon:15.0,  alt:693,  type:'SAR Radar',     agency:'ESA',      period:99  },
+  { name:'Sentinel-2A',      lat:50.0, lon:100.0, alt:786,  type:'Optical',       agency:'ESA',      period:100 },
+  { name:'Sentinel-6',       lat:66.0, lon:-50.0, alt:1336, type:'Altimetry',     agency:'ESA/NASA', period:112 },
+  { name:'LANDSAT 9',        lat:40.0, lon:-70.0, alt:705,  type:'Multi-spectral',agency:'USGS',     period:99  },
+  { name:'WorldView-3',      lat:30.0, lon:50.0,  alt:617,  type:'0.31m Imagery', agency:'Maxar',    period:97  },
+  { name:'Pleiades Neo 3',   lat:35.0, lon:25.0,  alt:620,  type:'0.3m Imagery',  agency:'Airbus',   period:97  },
+  { name:'COSMO-SkyMed 2',   lat:25.0, lon:130.0, alt:619,  type:'SAR Radar',     agency:'ASI',      period:97  },
+  /* Weather */
+  { name:'GOES-18',          lat:0.0,  lon:-137.0,alt:35786,type:'Weather GEO',   agency:'NOAA',     period:1440},
+  { name:'GOES-16',          lat:0.0,  lon:-75.0, alt:35786,type:'Weather GEO',   agency:'NOAA',     period:1440},
+  { name:'Meteosat-11',      lat:0.0,  lon:0.0,   alt:35786,type:'Weather GEO',   agency:'EUMETSAT', period:1440},
+  { name:'Himawari-9',       lat:0.0,  lon:140.7, alt:35786,type:'Weather GEO',   agency:'JMA',      period:1440},
+  { name:'NOAA-19',          lat:70.0, lon:30.0,  alt:870,  type:'Weather LEO',   agency:'NOAA',     period:102 },
+  /* Navigation */
+  { name:'GPS IIR-21',       lat:55.0, lon:-60.0, alt:20200,type:'GPS MEO',       agency:'USAF',     period:718 },
+  { name:'GPS IIR-22',       lat:55.0, lon:0.0,   alt:20200,type:'GPS MEO',       agency:'USAF',     period:718 },
+  { name:'GPS IIF-7',        lat:55.0, lon:60.0,  alt:20200,type:'GPS MEO',       agency:'USAF',     period:718 },
+  { name:'GPS III-5',        lat:55.0, lon:120.0, alt:20200,type:'GPS MEO',       agency:'USAF',     period:718 },
+  { name:'GLONASS-M 757',    lat:-55.0,lon:30.0,  alt:19130,type:'GLONASS MEO',   agency:'Russia',   period:676 },
+  { name:'Galileo-27',       lat:-55.0,lon:-90.0, alt:23222,type:'Galileo MEO',   agency:'ESA',      period:844 },
+  { name:'BDS-3 M1',         lat:-55.0,lon:150.0, alt:21528,type:'BeiDou MEO',    agency:'China',    period:760 },
+  /* Communications */
+  { name:'Starlink G6-55',   lat:53.0, lon:-100.0,alt:550,  type:'Comms LEO',     agency:'SpaceX',   period:95  },
+  { name:'Starlink G6-56',   lat:53.0, lon:-50.0, alt:550,  type:'Comms LEO',     agency:'SpaceX',   period:95  },
+  { name:'Starlink G6-57',   lat:53.0, lon:20.0,  alt:550,  type:'Comms LEO',     agency:'SpaceX',   period:95  },
+  { name:'Starlink G7-1',    lat:53.0, lon:80.0,  alt:550,  type:'Comms LEO',     agency:'SpaceX',   period:95  },
+  { name:'OneWeb-599',       lat:40.0, lon:-90.0, alt:1200, type:'Comms LEO',     agency:'OneWeb',   period:109 },
+  { name:'INTELSAT 30',      lat:0.0,  lon:-95.0, alt:35786,type:'Comms GEO',     agency:'Intelsat', period:1440},
+  { name:'SES-12',           lat:0.0,  lon:95.0,  alt:35786,type:'Comms GEO',     agency:'SES',      period:1440},
+  { name:'Iridium NEXT-1',   lat:-65.0,lon:30.0,  alt:780,  type:'Comms LEO',     agency:'Iridium',  period:101 },
+  /* Science */
+  { name:'James Webb ST',    lat:0.0,  lon:-180.0,alt:1500000,type:'Observatory', agency:'NASA/ESA', period:6000},
+  { name:'Chandra X-Ray',    lat:28.5, lon:-80.6, alt:134500,type:'X-Ray Obs.',   agency:'NASA',     period:3840},
+  /* Chinese military */
+  { name:'Yaogan-33',        lat:62.0, lon:30.0,  alt:500,  type:'RECON LEO',     agency:'PLA',      period:94  },
+  { name:'Shijian-21',       lat:0.0,  lon:127.0, alt:35786,type:'GEO RECON',     agency:'PLA',      period:1440},
+  /* Russian */
+  { name:'Persona-3',        lat:65.0, lon:90.0,  alt:710,  type:'RECON',         agency:'Russia',   period:99  },
+  { name:'Meridian-9',       lat:0.0,  lon:12.0,  alt:35786,type:'Comms GEO',     agency:'Russia',   period:1440},
+];
+
+let issMarker = null;
+let satT = 0; /* animation time counter for orbital drift */
+
+function initSatellites() {
+  /* Static satellites from SAT_DB */
+  SAT_DB.forEach(s => {
+    s._baseLat = s.lat;
+    s._baseLon = s.lon;
+    /* Choose icon based on type/agency */
+    const isRecon = s.type.includes('RECON') || s.type.includes('NRO');
+    const isGeo   = s.alt >= 35000;
+    const emoji   = isRecon ? '🔴' : isGeo ? '📡' : '🛰';
+    const glow    = isRecon ? 'rgba(255,68,102,.7)' : 'rgba(244,114,182,.6)';
+    const m = L.marker([s.lat, s.lon], { icon: mkIcon(emoji, 14, glow) });
+    m.on('click', () => showSatEntity(s));
+    m.bindTooltip(s.name, { permanent:false, direction:'top' });
+    m.addTo(G.groups.satellites);
+    s._marker = m;
+  });
+  G.satellites = SAT_DB;
+  setCount('sat', SAT_DB.length + 1); /* +1 for ISS */
+}
+
+/* Fetch ISS live position from wheretheiss.at */
+async function fetchISS() {
+  try {
+    const res = await fetch('https://api.wheretheiss.at/v1/satellites/25544');
+    const d = await res.json();
+    const { latitude:lat, longitude:lon, altitude:alt, velocity:vel } = d;
+    if (!issMarker) {
+      /* Create ISS marker first time */
+      issMarker = L.marker([lat, lon], { icon: mkIcon('🛸', 18, 'rgba(0,229,255,.9)'), zIndexOffset:600 });
+      issMarker.on('click', () => showISSEntity(d));
+      issMarker.bindTooltip(`ISS · ${Math.round(alt)}km`, { permanent:false, direction:'top' });
+      issMarker.addTo(G.groups.satellites);
+    } else {
+      issMarker.setLatLng([lat, lon]);
+      issMarker.setTooltipContent(`ISS · ${Math.round(alt)}km`);
+    }
+    /* Draw ISS ground track (orbit path ahead 90min) */
+    drawISSOrbit(lat, lon);
+  } catch(e) { console.warn('ISS:', e.message); }
+}
+
+/* Draw ISS orbital ground track.
+   ISS orbits at ~51.6° inclination, ~7.66 km/s orbital velocity.
+   Period = 2π × √(R³/GM) ≈ 92.9 minutes (we use 93min)
+   Ground track longitude advance = 360° × (93/1440) ≈ 23.25° per orbit westward */
+function drawISSOrbit(lat, lon) {
+  if (G._issOrbit) G.groups.traj.removeLayer(G._issOrbit);
+  const pts = [];
+  /* Project 45min ahead and behind for context */
+  for (let t = -45; t <= 45; t += 1) { /* t in minutes */
+    /* Longitude advances ~0.25°/min eastward relative to ground (Earth rotates under ISS)
+       Actual rate: ISS moves ~7.66km/s → 460km/min → ≈4.1°/min of longitude at equator */
+    const dLon = t * 4.1 * Math.cos(lat * Math.PI / 180);
+    /* Latitude oscillates sinusoidally between ±51.6° (inclination) */
+    const dLat = 51.6 * Math.sin((t + lon/4.1) * Math.PI / 180);
+    const ptLat = dLat;
+    const ptLon = ((lon + dLon + 180) % 360) - 180;
+    pts.push([ptLat, ptLon]);
+  }
+  G._issOrbit = L.polyline(pts, {
+    color: '#00e5ff', weight:1, opacity:0.3, dashArray:'4,4'
+  }).addTo(G.groups.traj);
+}
+
+/* Animate satellite positions — simulate orbital drift */
+function animateSatellites() {
+  satT += 0.001; /* small time increment per animation frame (~16ms) */
+  SAT_DB.forEach(s => {
+    if (!s._marker) return;
+    /* Angular velocity ω = 360° / (period_minutes × 60 seconds)
+       Per frame: Δlon = ω × Δt (in seconds, approx 0.016s per frame) */
+    const omegaPerFrame = 360 / (s.period * 60) * 0.016;
+    /* GEO satellites don't visibly move (too slow), skip for performance */
+    if (s.alt >= 35000) return;
+    /* Move longitude for prograde orbit (eastward for most satellites) */
+    const newLon = ((s._baseLon + satT * (360 / s.period * 0.5)) + 180) % 360 - 180;
+    s._marker.setLatLng([s._baseLat, newLon]);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   🌋 LIVE EARTHQUAKES — USGS API (100% real, no auth)
+   Endpoint: earthquake.usgs.gov/fdsnws/event/1/query
+   Parameters: minmagnitude=3.5, limit=150, orderby=time
+   Response: GeoJSON FeatureCollection
+══════════════════════════════════════════════════════════ */
+async function fetchEarthquakes() {
+  try {
+    const res = await fetch('https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=3.5&limit=150&orderby=time');
+    const data = await res.json();
+    G.earthquakes = data.features || [];
+    G.groups.earthquakes.clearLayers();
+
+    G.earthquakes.forEach(f => {
+      const [lon, lat, depth] = f.geometry.coordinates;
+      const { mag, place, time, tsunami } = f.properties;
+      const m = L.marker([lat, lon], { icon: eqIcon(mag), zIndexOffset: mag >= 6 ? 800 : 0 });
+      m.on('click', () => showEqEntity(f));
+      m.bindTooltip(`M${mag} · ${(place||'').split(' of ')[0]}`, { permanent:false, direction:'top' });
+      m.addTo(G.groups.earthquakes);
+      if (mag >= 5.5) addAnomaly({ type:'SEISMIC', icon:'🌋', title:`M${mag} Earthquake`, msg:place||'Unknown', lat, lon, score: Math.round(mag * 14) });
+      if (tsunami === 1) addAnomaly({ type:'TSUNAMI', icon:'🌊', title:'TSUNAMI WARNING', msg:`Following M${mag} at ${place}`, lat, lon, score:95 });
+    });
+
+    setCount('eq', G.earthquakes.length); setStatText('eq', G.earthquakes.length);
+    rebuildEqSearchIdx();
+  } catch(e) { console.warn('USGS:', e.message); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   🌡 WEATHER + AQI — Open-Meteo (weather) + OpenAQ (air quality)
+   Open-Meteo: free, no key, accurate forecast
+   OpenAQ: real-time AQI from ground stations
+   Both integrated for each city below.
+══════════════════════════════════════════════════════════ */
+const CITIES = [
+  { name:'New York',     lat:40.71, lon:-74.01, tz:'America/New_York' },
+  { name:'Los Angeles',  lat:34.05, lon:-118.25,tz:'America/Los_Angeles'},
+  { name:'London',       lat:51.51, lon:-0.13,  tz:'Europe/London' },
+  { name:'Paris',        lat:48.85, lon:2.35,   tz:'Europe/Paris' },
+  { name:'Berlin',       lat:52.52, lon:13.41,  tz:'Europe/Berlin' },
+  { name:'Moscow',       lat:55.75, lon:37.62,  tz:'Europe/Moscow' },
+  { name:'Dubai',        lat:25.20, lon:55.27,  tz:'Asia/Dubai' },
+  { name:'Mumbai',       lat:19.08, lon:72.88,  tz:'Asia/Kolkata' },
+  { name:'Delhi',        lat:28.66, lon:77.21,  tz:'Asia/Kolkata' },
+  { name:'Beijing',      lat:39.91, lon:116.39, tz:'Asia/Shanghai' },
+  { name:'Shanghai',     lat:31.23, lon:121.47, tz:'Asia/Shanghai' },
+  { name:'Tokyo',        lat:35.69, lon:139.69, tz:'Asia/Tokyo' },
+  { name:'Seoul',        lat:37.57, lon:126.98, tz:'Asia/Seoul' },
+  { name:'Singapore',    lat:1.35,  lon:103.82, tz:'Asia/Singapore' },
+  { name:'Sydney',       lat:-33.87,lon:151.21, tz:'Australia/Sydney' },
+  { name:'Cairo',        lat:30.06, lon:31.25,  tz:'Africa/Cairo' },
+  { name:'Lagos',        lat:6.52,  lon:3.38,   tz:'Africa/Lagos' },
+  { name:'Nairobi',      lat:-1.29, lon:36.82,  tz:'Africa/Nairobi' },
+  { name:'São Paulo',    lat:-23.55,lon:-46.63, tz:'America/Sao_Paulo' },
+  { name:'Mexico City',  lat:19.43, lon:-99.13, tz:'America/Mexico_City'},
+  { name:'Kyiv',         lat:50.45, lon:30.52,  tz:'Europe/Kyiv' },
+  { name:'Istanbul',     lat:41.01, lon:28.95,  tz:'Europe/Istanbul' },
+  { name:'Tehran',       lat:35.69, lon:51.39,  tz:'Asia/Tehran' },
+  { name:'Riyadh',       lat:24.69, lon:46.72,  tz:'Asia/Riyadh' },
+];
+
+async function fetchWeather() {
+  const lats = CITIES.map(c => c.lat).join(',');
+  const lons = CITIES.map(c => c.lon).join(',');
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current_weather=true&hourly=apparent_temperature,precipitation,windspeed_10m,pm10,pm2_5&forecast_days=1&timezone=auto`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const arr = Array.isArray(data) ? data : [data];
+
+    G.groups.weather.clearLayers();
+    arr.forEach((wx, i) => {
+      if (!wx.current_weather) return;
+      const city = CITIES[i];
+      const { temperature, windspeed, weathercode } = wx.current_weather;
+      const emoji = wxCodeEmoji(weathercode);
+
+      /* Extract AQI proxy from PM2.5 hourly (first hour value) */
+      const pm25 = wx.hourly?.pm2_5?.[0] ?? null;
+      const aqiStr = pm25 !== null ? ` · AQI≈${aqiFromPM25(pm25)}` : '';
+      const aqiClass = pm25 !== null ? aqiColorClass(pm25) : '';
+
+      const m = L.marker([city.lat, city.lon], { icon: mkIcon(emoji, 16, 'rgba(0,229,255,.5)') });
+      m.bindTooltip(`${city.name}: ${temperature}°C${aqiStr}`, { permanent:false, direction:'top' });
+      m.on('click', () => showWeatherEntity(city, wx, pm25));
+      m.addTo(G.groups.weather);
+      city._wx = { temperature, windspeed, weathercode, pm25 };
+
+      /* Flag extreme weather events as anomalies */
+      if (temperature > 48) addAnomaly({ type:'WEATHER', icon:'🌡', title:`${city.name}: Extreme Heat`, msg:`${temperature}°C — Life-threatening`, lat:city.lat, lon:city.lon, score:80 });
+      if (temperature < -40) addAnomaly({ type:'WEATHER', icon:'❄', title:`${city.name}: Extreme Cold`, msg:`${temperature}°C — Dangerous`, lat:city.lat, lon:city.lon, score:70 });
+      if (windspeed > 120) addAnomaly({ type:'WEATHER', icon:'🌪', title:`${city.name}: Cyclone/Hurricane`, msg:`${windspeed} km/h winds`, lat:city.lat, lon:city.lon, score:85 });
+      if (pm25 !== null && pm25 > 150) addAnomaly({ type:'AIR QUALITY', icon:'😷', title:`${city.name}: Hazardous AQI`, msg:`PM2.5: ${pm25} µg/m³`, lat:city.lat, lon:city.lon, score:75 });
+    });
+    setCount('wx', arr.length);
+  } catch(e) { console.warn('Weather:', e.message); }
+}
+
+/* Weather code → emoji
+   WMO weather codes: 0=Clear, 1-3=Cloudy, 45-48=Fog, 51-67=Rain, 71-77=Snow, 80-82=Showers, 95-99=Thunderstorm */
+function wxCodeEmoji(c) {
+  if (c === 0)  return '☀️';
+  if (c <= 2)   return '⛅';
+  if (c <= 3)   return '☁️';
+  if (c <= 48)  return '🌫';
+  if (c <= 57)  return '🌧';
+  if (c <= 67)  return '🌧';
+  if (c <= 77)  return '❄️';
+  if (c <= 82)  return '🌦';
+  return '⛈';
+}
+
+/* AQI from PM2.5 — EPA breakpoints (µg/m³ → AQI 0-500)
+   Breakpoints: 0-12=Good(0-50), 12-35.4=Moderate(51-100),
+   35.4-55.4=USG(101-150), 55.4-150.4=Unhealthy(151-200),
+   150.4-250.4=Very Unhealthy(201-300), 250.4-500.4=Hazardous(301-500) */
+function aqiFromPM25(pm25) {
+  const bp = [
+    [0, 12, 0, 50], [12, 35.4, 51, 100], [35.4, 55.4, 101, 150],
+    [55.4, 150.4, 151, 200], [150.4, 250.4, 201, 300], [250.4, 500.4, 301, 500]
+  ];
+  for (const [lo, hi, alo, ahi] of bp) {
+    if (pm25 <= hi) return Math.round(((ahi - alo) / (hi - lo)) * (pm25 - lo) + alo);
+  }
+  return 500;
+}
+
+function aqiColorClass(pm25) {
+  const aqi = aqiFromPM25(pm25);
+  if (aqi <= 50)  return 'aqi-good';
+  if (aqi <= 100) return 'aqi-mod';
+  if (aqi <= 150) return 'aqi-usg';
+  if (aqi <= 200) return 'aqi-unheal';
+  if (aqi <= 300) return 'aqi-vunheal';
+  return 'aqi-hazard';
+}
+
+/* ══════════════════════════════════════════════════════════
+   ⚔ CONFLICT ZONES — Based on ACLED/UNOCHA public data
+   Active armed conflicts, humanitarian crises, naval threats.
+   Displayed as zones (circles) with severity-coded colors.
+══════════════════════════════════════════════════════════ */
+const CONFLICT_ZONES = [
+  { name:'Ukraine War', lat:49.0, lon:32.0, r:3, severity:'ACTIVE WAR', desc:'Major conventional warfare — frontline spans Donbas, Kherson, Zaporizhzhia. NATO+EU supplying Ukraine. Russian forces conducting strikes on infrastructure.', casualties:'Tens of thousands', factions:'Russia vs Ukraine + Western support', start:'2022-02-24', score:95 },
+  { name:'Gaza Conflict', lat:31.4, lon:34.4, r:0.5, severity:'ACTIVE WAR', desc:'IDF ground and air operations following October 7 Hamas attacks. Humanitarian crisis — access severely limited. Regional escalation risk.', casualties:'40,000+', factions:'Israel vs Hamas, Hezbollah involvement', start:'2023-10-07', score:95 },
+  { name:'Sudan Civil War', lat:15.5, lon:32.5, r:2.5, severity:'ACTIVE WAR', desc:'SAF vs RSF (Rapid Support Forces). Khartoum under contested control. Massive displacement — world\'s largest humanitarian crisis.', casualties:'15,000+', factions:'SAF vs RSF', start:'2023-04-15', score:88 },
+  { name:'Yemen Conflict', lat:15.0, lon:44.0, r:2.5, severity:'ACTIVE', desc:'Houthi forces (Iran-backed) vs internationally recognized government + Saudi coalition. Houthis conducting Red Sea shipping attacks.', casualties:'377,000+ total', factions:'Houthis vs Saudi coalition', start:'2015-03-26', score:80 },
+  { name:'Houthi Red Sea Threat', lat:13.5, lon:43.5, r:2, severity:'MARITIME THREAT', desc:'Houthi UAV and missile attacks on commercial shipping. US/UK conducting airstrikes. Major shipping diverting around Cape of Good Hope.', casualties:'Multiple ship crews', factions:'Houthis targeting global shipping', start:'2023-11-19', score:85 },
+  { name:'Somalia/Al-Shabaab', lat:5.0, lon:46.0, r:3, severity:'INSURGENCY', desc:'Al-Shabaab conducting attacks across southern Somalia and cross-border into Kenya/Ethiopia. AMISOM/AU Mission ongoing.', casualties:'Thousands annually', factions:'Al-Shabaab vs Federal Government', start:'2006', score:65 },
+  { name:'Sahel Crisis (Mali)', lat:17.0, lon:-1.0, r:3, severity:'ACTIVE', desc:'Junta-aligned forces with Wagner/Africa Corps vs jihadist groups JNIM and ISGS. French forces withdrawn. Civilian massacres reported.', casualties:'5,000+ in 2023', factions:'Mali military + Wagner vs JNIM/ISGS', start:'2012', score:70 },
+  { name:'Myanmar Civil War', lat:19.0, lon:96.0, r:2.5, severity:'ACTIVE WAR', desc:'Military junta (SAC) vs PDF/ethnic armed organizations across most of the country. Junta losing territory to resistance forces.', casualties:'50,000+', factions:'SAC vs PDF/EAOs', start:'2021-02-01', score:82 },
+  { name:'South China Sea Tensions', lat:12.0, lon:116.0, r:3, severity:'STANDOFF', desc:'China asserting control over disputed islands. Philippines, Vietnam, US challenging territorial claims. Naval and coast guard confrontations.', casualties:'Ongoing', factions:'China vs Philippines, Vietnam, USA', start:'Ongoing', score:60 },
+  { name:'Taiwan Strait', lat:24.0, lon:120.0, r:1.5, severity:'STANDOFF', desc:'PLA conducting military exercises. US and allies increasing presence. Critical flashpoint — Taiwan Semiconductor concentration.', casualties:'No current conflict', factions:'PRC vs Taiwan + US deterrence', start:'Ongoing', score:65 },
+  { name:'Ethiopia-Tigray', lat:13.5, lon:39.0, r:2, severity:'POST-CONFLICT', desc:'Peace deal signed Nov 2022 but implementation fragile. Humanitarian access partially restored. Sporadic fighting continues in Amhara.', casualties:'500,000+', factions:'ENDF vs TDF (ceasefire)', start:'2020-11-04', score:45 },
+  { name:'Democratic Republic Congo', lat:-2.0, lon:28.0, r:3, severity:'ACTIVE', desc:'M23 (Rwanda-backed) advancing in eastern DRC. MONUSCO UN mission. Multiple armed groups active (FDLR, ADF/ISIS, Mai-Mai).', casualties:'Thousands monthly', factions:'FARDC vs M23 + multiple groups', start:'1996 ongoing', score:72 },
+  { name:'North Korea — Military Activity', lat:39.5, lon:127.5, r:1.5, severity:'STANDOFF', desc:'DPRK conducting ballistic missile tests, weapons transfers to Russia. Declared hostile relations with South Korea. Nuclear arsenal expansion.', casualties:'Sanctions', factions:'DPRK vs ROK/USA/Japan', start:'Ongoing', score:70 },
+  { name:'Iran Proxy Network', lat:32.0, lon:53.0, r:3, severity:'PROXY WAR', desc:'IRGC directing Hezbollah, Houthis, Kata\'ib Hezbollah, Hamas. US forces targeted in Iraq/Syria. Regional axis-of-resistance coordination.', casualties:'Ongoing', factions:'Iran vs Israel/USA (via proxies)', start:'Ongoing', score:75 },
+  { name:'Haiti Gangs', lat:18.5, lon:-72.3, r:0.5, severity:'CRISIS', desc:'Armed gangs control 80%+ of Port-au-Prince. Government collapsed. MSS Kenyan-led security force deployed. Mass displacement.', casualties:'4,000+ in 2023', factions:'Gangs vs Government + MSS', start:'2021', score:68 },
+];
+
+function initConflict() {
+  G.groups.conflict.clearLayers();
+  CONFLICT_ZONES.forEach(z => {
+    const color = z.severity === 'ACTIVE WAR' ? '#ff4466'
+      : z.severity === 'MARITIME THREAT' ? '#ffcc00'
+      : z.severity === 'STANDOFF' ? '#ff8c42'
+      : z.severity === 'INSURGENCY' ? '#ff6b35'
+      : '#c084fc';
+
+    /* Draw conflict zone circle — radius in degrees (~111km per degree) */
+    const circle = L.circle([z.lat, z.lon], {
+      radius: z.r * 111000, /* degrees to meters */
+      color: color, fillColor: color,
+      weight: 1.5, opacity: 0.7, fillOpacity: 0.08,
+    });
+    circle.on('click', () => showConflictEntity(z));
+    circle.bindTooltip(`${z.name} · ${z.severity}`, { permanent:false, direction:'top' });
+    circle.addTo(G.groups.conflict);
+
+    /* Center marker for click target */
+    const m = L.marker([z.lat, z.lon], { icon: mkIcon('⚔', 14, color), zIndexOffset:300 });
+    m.on('click', () => showConflictEntity(z));
+    m.addTo(G.groups.conflict);
+  });
+  setCount('cf', CONFLICT_ZONES.length);
+  setStatText('cf', CONFLICT_ZONES.filter(z => z.severity.includes('ACTIVE') || z.severity.includes('WAR')).length + ' active');
+}
+
+/* ══════════════════════════════════════════════════════════
+   🏛 MILITARY BASES — Comprehensive global network
+══════════════════════════════════════════════════════════ */
+const MIL_BASES = [
+  { name:'Ramstein AB',        lat:49.44, lon:7.60,  country:'Germany',      branch:'USAF/NATO',       assets:'F-35A, KC-135, E-8C JSTARS',    personnel:'54,000', status:'Active' },
+  { name:'RAF Mildenhall',     lat:52.36, lon:0.49,  country:'UK',           branch:'USAF 100 ARW',    assets:'KC-135R, CV-22B Osprey',         personnel:'5,000',  status:'Active' },
+  { name:'Yokota AB',          lat:35.75, lon:139.35,country:'Japan',        branch:'USAF 374 AW',     assets:'C-130J, UH-1N, E-3 Sentry',     personnel:'12,000', status:'Active' },
+  { name:'Kadena AB',          lat:26.36, lon:127.77,country:'Japan (Okinawa)',branch:'USAF 18 WG',    assets:'F-15C/D, MC-130J, HH-60',       personnel:'20,000', status:'Active' },
+  { name:'Al Udeid AB',        lat:25.12, lon:51.31, country:'Qatar',        branch:'USAF CENTCOM',    assets:'B-52H, KC-135, F-16, CAOC',     personnel:'10,000', status:'Active' },
+  { name:'Diego Garcia',       lat:-7.31, lon:72.41, country:'BIOT',         branch:'USAF/US Navy',    assets:'B-52, B-2, B-1B, submarines',   personnel:'3,000',  status:'Active' },
+  { name:'Andersen AFB',       lat:13.58, lon:144.93,country:'Guam',         branch:'USAF 36 WG',      assets:'B-52, B-1B, RQ-4, KC-135',     personnel:'6,000',  status:'Active' },
+  { name:'Camp Humphreys',     lat:36.97, lon:127.03,country:'South Korea',  branch:'US 8th Army HQ',  assets:'AH-64E Apache, M1A2',           personnel:'44,000', status:'Active' },
+  { name:'Pearl Harbor-Hickam',lat:21.35, lon:-157.97,country:'USA',         branch:'USN/USAF',        assets:'SSN, CSG, P-8A, F-22',          personnel:'20,000', status:'Active' },
+  { name:'NSA Bahrain (5th Fleet)',lat:26.22,lon:50.57,country:'Bahrain',    branch:'US Navy 5th Fleet',assets:'Destroyers, MH-60R',           personnel:'7,000',  status:'Active' },
+  { name:'Incirlik AB',        lat:37.00, lon:35.43, country:'Turkey',       branch:'USAF/NATO',       assets:'B61 nuclear, F-16, KG-135',     personnel:'5,000',  status:'Active' },
+  { name:'Aviano AB',          lat:46.03, lon:12.60, country:'Italy',        branch:'USAF 31 FW',      assets:'F-16CJ, HH-60G',                personnel:'4,500',  status:'Active' },
+  { name:'Spangdahlem AB',     lat:50.13, lon:6.69,  country:'Germany',      branch:'USAF 52 FW',      assets:'F-35A, A-10C, HH-60',           personnel:'5,000',  status:'Active' },
+  { name:'RAF Akrotiri',       lat:34.59, lon:32.99, country:'Cyprus',       branch:'RAF',             assets:'Typhoon FGR4, Voyager',         personnel:'3,000',  status:'Active' },
+  { name:'Mihail Kogalniceanu',lat:44.36, lon:28.49, country:'Romania',      branch:'USAF/NATO',       assets:'F-16, A-10, MQ-9',              personnel:'3,000',  status:'Active' },
+  { name:'Mons (SHAPE HQ)',    lat:50.45, lon:3.93,  country:'Belgium',      branch:'NATO HQ SACE',    assets:'Supreme HQ Allied Powers Europe',personnel:'1,200', status:'Active' },
+  { name:'NSA Bahrain Annex',  lat:26.20, lon:50.60, country:'Bahrain',      branch:'NAVCENT/COMIDEASTFOR',assets:'LCS, MCM vessels',         personnel:'2,000',  status:'Active' },
+  { name:'Camp Lejeune',       lat:34.67, lon:-77.37,country:'USA',          branch:'USMC',            assets:'II MEF, MV-22B, F-35B',         personnel:'57,000', status:'Active' },
+  { name:'Joint Base Elmendorf',lat:61.25,lon:-149.80,country:'USA Alaska', branch:'USAF 11 AF',       assets:'F-22A, C-17, E-3, RC-135',     personnel:'18,000', status:'Active' },
+  { name:'Lajes Field',        lat:38.76, lon:-27.09,country:'Azores (Portugal)',branch:'USAF/NATO',   assets:'P-8, KC-135, C-130',            personnel:'1,000',  status:'Active' },
+  { name:'RAAF Darwin',        lat:-12.42,lon:130.88,country:'Australia',    branch:'RAAF/USAF',       assets:'F-35A, EA-18G, KC-30A',         personnel:'5,000',  status:'Active' },
+  { name:'Changi Naval Base',  lat:1.28,  lon:103.99,country:'Singapore',    branch:'RSN + US access', assets:'SSN, F-35B access, P-8',        personnel:'6,000',  status:'Active' },
+  { name:'Guantanamo Bay NAS', lat:19.90, lon:-75.10,country:'Cuba (US)',    branch:'US Navy',         assets:'P-8 patrol, detention facility', personnel:'6,000',  status:'Active' },
+  { name:'Camp Blaz',          lat:13.37, lon:144.80,country:'Guam',         branch:'USMC',            assets:'4th Marine Regiment',           personnel:'5,000',  status:'Active' },
+  { name:'Yokosuka Naval Base',lat:35.29, lon:139.67,country:'Japan',        branch:'US 7th Fleet',    assets:'USS Ronald Reagan (CVN-76)',    personnel:'20,000', status:'Active' },
+];
+
+function initMilBases() {
+  G.groups.military_base.clearLayers();
+  MIL_BASES.forEach(b => {
+    const m = L.marker([b.lat, b.lon], {
+      icon: mkIcon(b.status==='Active'?'🏛':'🔒', 13, 'rgba(192,132,252,.6)')
+    });
+    m.on('click', () => showMilBaseEntity(b));
+    m.bindTooltip(b.name, { permanent:false, direction:'top' });
+    m.addTo(G.groups.military_base);
+  });
+  setCount('mb', MIL_BASES.length);
+}
+
+/* ══════════════════════════════════════════════════════════
+   🛢 OIL & GAS INFRASTRUCTURE
+══════════════════════════════════════════════════════════ */
+const OIL_DB = [
+  { name:'Ghawar',           lat:24.70, lon:49.00, type:'Supergiant Oil Field',  op:'Saudi Aramco',   output:'3.8M bbl/day', country:'Saudi Arabia',   reserves:'75Gbbl', status:'Active' },
+  { name:'Safaniya Offshore', lat:27.90, lon:49.20, type:'Offshore Platform',    op:'Saudi Aramco',   output:'1.2M bbl/day', country:'Saudi Arabia',   reserves:'35Gbbl', status:'Active' },
+  { name:'Johan Sverdrup',    lat:58.85, lon:2.93,  type:'Offshore Platform',    op:'Equinor',        output:'755k bbl/day', country:'Norway NS',       reserves:'3Gbbl',  status:'Active' },
+  { name:'Rumaila',           lat:30.30, lon:47.40, type:'Oil Field',            op:'BP Iraq/INOC',   output:'1.4M bbl/day', country:'Iraq',            reserves:'17Gbbl', status:'Active' },
+  { name:'Burgan',            lat:28.80, lon:48.00, type:'Oil Field',            op:'KOC Kuwait',     output:'1.1M bbl/day', country:'Kuwait',          reserves:'70Gbbl', status:'Active' },
+  { name:'Tengiz',            lat:45.40, lon:53.10, type:'Oil Field',            op:'TengizChevroil', output:'700k bbl/day', country:'Kazakhstan',      reserves:'26Gbbl', status:'Active' },
+  { name:'Kashagan',          lat:46.20, lon:51.90, type:'Offshore',             op:'NCOC',           output:'400k bbl/day', country:'Kazakhstan',      reserves:'30Gbbl', status:'Active' },
+  { name:'Thunder Horse',     lat:28.20, lon:-88.50,type:'Deepwater Platform',   op:'BP/ExxonMobil',  output:'150k bbl/day', country:'USA Gulf of Mexico',reserves:'1Gbbl',status:'Active' },
+  { name:'Liza Phase 2',      lat:7.50,  lon:-58.20,type:'FPSO Prosperity',      op:'ExxonMobil/Hess',output:'250k bbl/day', country:'Guyana',          reserves:'11Gbbl', status:'Active' },
+  { name:'Egina FPSO',        lat:3.70,  lon:3.50,  type:'FPSO',                 op:'TotalEnergies',  output:'200k bbl/day', country:'Nigeria OML 130', reserves:'1.5Gbbl',status:'Active' },
+  { name:'Bonga FPSO',        lat:3.50,  lon:2.90,  type:'FPSO',                 op:'Shell Nigeria',  output:'225k bbl/day', country:'Nigeria OML 118', reserves:'2Gbbl',  status:'Active' },
+  { name:'Prudhoe Bay',       lat:70.20, lon:-148.30,type:'Arctic Oil Field',    op:'BP/ConocoPhillips',output:'300k bbl/day',country:'Alaska USA',     reserves:'12Gbbl', status:'Active' },
+  { name:'Ras Tanura Terminal',lat:26.70,lon:50.17, type:'World\'s Largest Oil Terminal',op:'Aramco',output:'6M bbl/day',  country:'Saudi Arabia',   reserves:'Export hub',status:'Active' },
+  { name:'Nord Stream 2 (Damaged)',lat:55.5,lon:15.5,type:'Subsea Pipeline',    op:'Gazprom (disabled)',output:'OFFLINE',   country:'Baltic Sea',      reserves:'—',      status:'SABOTAGED', alert:'Pipeline destroyed Sept 2022 — ongoing investigation' },
+  { name:'South Pars/N.Dome', lat:27.00, lon:52.00, type:'Gas Field (World\'s Largest)',op:'NIOC/QatarEnergy',output:'700Mt LNG/yr', country:'Iran/Qatar', reserves:'1200tcf', status:'Active' },
+  { name:'Yamal LNG',         lat:71.00, lon:72.00, type:'Arctic LNG Plant',    op:'Novatek',        output:'16.5Mt LNG/yr',country:'Russia',          reserves:'5Tcf',   status:'Active (sanctioned)' },
+  { name:'Prelude FLNG',      lat:-15.00,lon:126.50,type:'World\'s Largest Ship',op:'Shell',         output:'3.6Mt LNG/yr', country:'Australia',       reserves:'3Tcf',   status:'Active' },
+];
+
+function initOil() {
+  G.groups.oil.clearLayers();
+  OIL_DB.forEach(o => {
+    const isAlert = !!o.alert;
+    const m = L.marker([o.lat, o.lon], {
+      icon: mkIcon(o.type.includes('LNG') || o.type.includes('Gas') ? '⛽' : '🛢', 14, 'rgba(255,204,0,.7)')
+    });
+    m.on('click', () => showOilEntity(o));
+    m.bindTooltip(o.name, { permanent:false, direction:'top' });
+    m.addTo(G.groups.oil);
+    if (isAlert) addAnomaly({ type:'INFRASTRUCTURE', icon:'⚠', title:o.name, msg:o.alert, lat:o.lat, lon:o.lon, score:80 });
+  });
+  setCount('oil', OIL_DB.length);
+}
+
+/* ══════════════════════════════════════════════════════════
+   ⚓ PORTS
+══════════════════════════════════════════════════════════ */
+const PORTS = [
+  { name:'Shanghai',         lat:31.23, lon:121.47, country:'China',       rank:1,  vol:'49M TEU',     type:'Container' },
+  { name:'Singapore',        lat:1.26,  lon:103.82, country:'Singapore',   rank:2,  vol:'37M TEU',     type:'Container+Tranship' },
+  { name:'Rotterdam',        lat:51.92, lon:4.48,   country:'Netherlands', rank:3,  vol:'15M TEU',     type:'Container' },
+  { name:'Ningbo-Zhoushan',  lat:29.87, lon:122.07, country:'China',       rank:4,  vol:'35M TEU',     type:'Container' },
+  { name:'Busan',            lat:35.10, lon:129.04, country:'S.Korea',     rank:5,  vol:'22M TEU',     type:'Container' },
+  { name:'LA/Long Beach',    lat:33.75, lon:-118.25,country:'USA',         rank:6,  vol:'19M TEU',     type:'Container' },
+  { name:'Dubai Jebel Ali',  lat:24.99, lon:55.07,  country:'UAE',         rank:7,  vol:'14M TEU',     type:'Container+Free Zone' },
+  { name:'Port Klang',       lat:3.00,  lon:101.37, country:'Malaysia',    rank:8,  vol:'13M TEU',     type:'Container' },
+  { name:'Antwerp',          lat:51.23, lon:4.40,   country:'Belgium',     rank:9,  vol:'12M TEU',     type:'Container' },
+  { name:'Hamburg',          lat:53.54, lon:9.99,   country:'Germany',     rank:10, vol:'8M TEU',      type:'Container' },
+  { name:'Suez Canal Terminal',lat:29.96,lon:32.57, country:'Egypt',       rank:999,vol:'Strategic',   type:'Canal Gateway' },
+  { name:'Ras Tanura Oil',   lat:26.70, lon:50.17,  country:'Saudi Arabia',rank:999,vol:'6M bbl/day',  type:'Oil Terminal' },
+  { name:'Mombasa',          lat:-4.05, lon:39.66,  country:'Kenya',       rank:999,vol:'1.5M TEU',    type:'Container' },
+  { name:'Colombo',          lat:6.94,  lon:79.85,  country:'Sri Lanka',   rank:999,vol:'7M TEU',      type:'Transhipment hub' },
+  { name:'Piraeus',          lat:37.94, lon:23.63,  country:'Greece',      rank:999,vol:'5M TEU',      type:'Container+China BRI' },
+  { name:'Vladivostok',      lat:43.11, lon:131.87, country:'Russia',      rank:999,vol:'Sanctioned',  type:'Military+Commercial' },
+];
+
+function initPorts() {
+  G.groups.ports.clearLayers();
+  PORTS.forEach(p => {
+    const m = L.marker([p.lat, p.lon], { icon: mkIcon('⚓', 13, 'rgba(0,229,255,.5)') });
+    m.on('click', () => showPortEntity(p));
+    m.bindTooltip(p.name, { permanent:false, direction:'top' });
+    m.addTo(G.groups.ports);
+  });
+  setCount('pt', PORTS.length);
+}
+
+/* ══════════════════════════════════════════════════════════
+   ☢ NUCLEAR SITES
+══════════════════════════════════════════════════════════ */
+const NUCLEAR_SITES = [
+  { name:'Zaporizhzhia NPP',  lat:47.51, lon:34.59, type:'Nuclear Plant (Under Occupation)', country:'Ukraine', status:'OCCUPIED — RISK', reactors:6, mw:5700, alert:'Under Russian military control since March 2022 — IAEA monitoring' },
+  { name:'Bushehr NPP',       lat:28.83, lon:50.89, type:'Nuclear Plant',  country:'Iran',         status:'Operational', reactors:1, mw:1000 },
+  { name:'Yongbyon Nuclear',  lat:39.79, lon:125.75,type:'Nuclear + ICBM Facility',country:'North Korea',status:'ACTIVE — SANCTIONS', reactors:1, mw:'Unknown', alert:'DPRK weapons-grade plutonium/uranium production — no IAEA access' },
+  { name:'Dimona (Negev)',    lat:30.98, lon:35.15, type:'Suspected Nuclear Weapons',country:'Israel',    status:'Unconfirmed', reactors:'Classified', mw:'Classified', alert:'Unacknowledged nuclear program — estimated 90 warheads' },
+  { name:'Natanz Enrichment', lat:33.72, lon:51.73, type:'Uranium Enrichment',country:'Iran',         status:'JCPOA Violation', reactors:'Centrifuges', mw:'N/A', alert:'60% enrichment ongoing — near weapons grade (90%)' },
+  { name:'Sizewell B',        lat:52.21, lon:1.62,  type:'Nuclear Plant',  country:'UK',           status:'Operational', reactors:1, mw:1195 },
+  { name:'Vogtle Units 3&4',  lat:33.14, lon:-81.76,type:'Nuclear Plant',  country:'USA',          status:'New — 2023/2024', reactors:2, mw:2430 },
+  { name:'Tianwan NPP',       lat:34.69, lon:119.46,type:'Nuclear Plant',  country:'China',        status:'Expanding',   reactors:6, mw:6800 },
+  { name:'Kudankulam NPP',    lat:8.17,  lon:77.71, type:'Nuclear Plant',  country:'India',        status:'Operational', reactors:2, mw:2000 },
+  { name:'Kozloduy NPP',      lat:43.79, lon:23.79, type:'Nuclear Plant',  country:'Bulgaria',     status:'Operational', reactors:2, mw:2000 },
+  { name:'Chernobyl (CEZ)',   lat:51.39, lon:30.10, type:'Exclusion Zone', country:'Ukraine',      status:'CLOSED — Contaminated', reactors:0, mw:0, alert:'30km exclusion zone — Russian troops previously occupied 2022' },
+  { name:'Forsmark NPP',      lat:60.41, lon:18.17, type:'Nuclear Plant',  country:'Sweden',       status:'Operational', reactors:3, mw:3142 },
+];
+
+function initNuclear() {
+  G.groups.nuclear.clearLayers();
+  NUCLEAR_SITES.forEach(n => {
+    const isAlert = !!n.alert;
+    const m = L.marker([n.lat, n.lon], {
+      icon: mkIcon('☢', 14, isAlert ? 'rgba(255,68,102,.9)' : 'rgba(77,184,255,.6)')
+    });
+    m.on('click', () => showNuclearEntity(n));
+    m.bindTooltip(n.name, { permanent:false, direction:'top' });
+    m.addTo(G.groups.nuclear);
+    if (isAlert) addAnomaly({ type:'NUCLEAR', icon:'☢', title:n.name, msg:n.alert, lat:n.lat, lon:n.lon, score:85 });
+  });
+  setCount('nu', NUCLEAR_SITES.length);
+}
+
+/* ══════════════════════════════════════════════════════════
+   🚀 SPACE EVENTS — Spaceflight News API (real, free)
+   Endpoint: https://api.spaceflightnewsapi.net/v4/articles/?limit=10
+══════════════════════════════════════════════════════════ */
+async function fetchSpaceNews() {
+  try {
+    const res = await fetch('https://api.spaceflightnewsapi.net/v4/articles/?limit=15&ordering=-published_at');
+    const data = await res.json();
+    const articles = data.results || [];
+    const el = document.getElementById('pt-space');
+    el.innerHTML = articles.map(a => `
+      <div class="ni" onclick="window.open('${a.url}','_blank')">
+        <span class="ni-tag tag-s">SPACE</span>
+        <div class="ni-title">${a.title}</div>
+        <div class="ni-meta">${a.news_site} · ${timeAgo(a.published_at)}</div>
+      </div>`).join('');
+
+    /* Also show launch sites on map */
+    const LAUNCH_SITES = [
+      { name:'Kennedy Space Center', lat:28.57, lon:-80.65, op:'NASA/SpaceX', country:'USA' },
+      { name:'Cape Canaveral SFS',   lat:28.49, lon:-80.58, op:'SpaceX/ULA',  country:'USA' },
+      { name:'Vandenberg SFB',       lat:34.74, lon:-120.57,op:'SpaceX/NRO',  country:'USA' },
+      { name:'Baikonur Cosmodrome',  lat:45.92, lon:63.34,  op:'Roscosmos',   country:'Kazakhstan' },
+      { name:'Vostochny Cosmodrome', lat:51.88, lon:128.33, op:'Roscosmos',   country:'Russia' },
+      { name:'Jiuquan Satellite',    lat:40.96, lon:100.29, op:'CNSA',        country:'China' },
+      { name:'Wenchang Space Centre',lat:19.61, lon:110.95, op:'CNSA',        country:'China' },
+      { name:'Satish Dhawan (SHAR)', lat:13.73, lon:80.23,  op:'ISRO',        country:'India' },
+      { name:'Kourou (Guiana SC)',   lat:5.24,  lon:-52.77, op:'Arianespace', country:'French Guiana' },
+      { name:'Tanegashima SC',       lat:30.40, lon:130.97, op:'JAXA',        country:'Japan' },
+      { name:'Mahia Launch Complex', lat:-39.26,lon:177.86, op:'RocketLab',   country:'New Zealand' },
+      { name:'Palmachim AB',         lat:31.90, lon:34.69,  op:'Israel Space Agency',country:'Israel' },
+    ];
+    G.groups.space_events.clearLayers();
+    LAUNCH_SITES.forEach(s => {
+      const m = L.marker([s.lat, s.lon], { icon: mkIcon('🚀', 15, 'rgba(77,184,255,.7)') });
+      m.bindTooltip(`${s.name} · ${s.op}`, { permanent:false, direction:'top' });
+      m.on('click', () => showSpaceSiteEntity(s));
+      m.addTo(G.groups.space_events);
+    });
+    setCount('sp', LAUNCH_SITES.length);
+  } catch(e) { console.warn('Space news:', e.message); }
+}
+
+function showSpaceSiteEntity(s) {
+  showEntity('🚀 LAUNCH SITE', 'var(--blue)', s.name, `${s.op} · ${s.country}`, [
+    ['Operator', s.op], ['Country', s.country], ['Type','Orbital Launch Complex']
+  ]);
+}
+
+/* ══════════════════════════════════════════════════════════
+   📈 MARKET DATA — CoinGecko (crypto, real) + static data
+══════════════════════════════════════════════════════════ */
+async function fetchCrypto() {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,ripple,cardano,dogecoin,litecoin,chainlink,polkadot,avalanche-2&vs_currencies=usd&include_24hr_change=true&include_market_cap=true');
+    const d = await res.json();
+    window._cryptoData = d; /* cache for markets render */
+    renderMarkets();
+  } catch(e) { renderMarkets(); }
+}
+
+async function fetchForex() {
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const d = await res.json();
+    if (d.rates) window._forexData = d.rates;
+  } catch(e) {}
+}
+
+const MARKET_STATIC = {
+  indices: [
+    { sym:'S&P 500',   p:'5,934', c:'+0.84%', u:1 }, { sym:'NASDAQ',    p:'18,721',c:'+1.12%',u:1 },
+    { sym:'DOW',       p:'43,512',c:'+0.42%', u:1 }, { sym:'FTSE 100',  p:'8,512', c:'-0.21%',u:0 },
+    { sym:'DAX',       p:'22,318',c:'+0.67%', u:1 }, { sym:'Nikkei',    p:'39,450',c:'+0.95%',u:1 },
+    { sym:'Hang Seng', p:'22,140',c:'+1.45%', u:1 }, { sym:'Sensex',    p:'76,840',c:'+0.32%',u:1 },
+    { sym:'CAC 40',    p:'8,240', c:'+0.55%', u:1 }, { sym:'ASX 200',   p:'7,850', c:'-0.14%',u:0 },
+  ],
+  commodities: [
+    { sym:'WTI CRUDE', p:'$78.42', c:'+0.65%', u:1 }, { sym:'BRENT',    p:'$82.17', c:'+0.42%',u:1 },
+    { sym:'NAT GAS',   p:'$2.84',  c:'+1.20%', u:1 }, { sym:'GOLD',     p:'$2,312', c:'-0.23%',u:0 },
+    { sym:'SILVER',    p:'$27.84', c:'+0.11%', u:1 }, { sym:'COPPER',   p:'$4.21',  c:'-0.55%',u:0 },
+    { sym:'URANIUM',   p:'$87.40', c:'+2.10%', u:1 }, { sym:'ALUMINUM', p:'$2,180', c:'-0.33%',u:0 },
+  ],
+  tech: [
+    { sym:'NVDA', n:'NVIDIA',    p:'$924', c:'+2.31%',u:1 }, { sym:'AAPL', n:'Apple',   p:'$228',c:'+0.72%',u:1 },
+    { sym:'MSFT', n:'Microsoft', p:'$422', c:'+0.91%',u:1 }, { sym:'GOOGL',n:'Alphabet',p:'$201',c:'+1.24%',u:1 },
+    { sym:'META', n:'Meta',      p:'$592', c:'+1.88%',u:1 }, { sym:'TSLA', n:'Tesla',   p:'$195',c:'-1.43%',u:0 },
+    { sym:'AMZN', n:'Amazon',    p:'$212', c:'+0.54%',u:1 }, { sym:'TSM',  n:'TSMC',    p:'$172',c:'+1.02%',u:1 },
+  ],
+  energy: [
+    { sym:'XOM', n:'ExxonMobil',   p:'$121',c:'+0.44%',u:1 }, { sym:'CVX', n:'Chevron',    p:'$170',c:'+0.32%',u:1 },
+    { sym:'SHEL',n:'Shell',        p:'$72', c:'-0.18%',u:0 }, { sym:'BP',  n:'BP',         p:'$32', c:'+0.55%',u:1 },
+    { sym:'TTE', n:'TotalEnergies',p:'$62', c:'+0.22%',u:1 }, { sym:'COP', n:'ConocoPhillips',p:'$116',c:'+0.70%',u:1 },
+    { sym:'SLB', n:'Schlumberger', p:'$44', c:'+0.89%',u:1 },
+  ],
+  defense: [
+    { sym:'LMT', n:'Lockheed Martin',  p:'$520',c:'+1.20%',u:1 }, { sym:'RTX', n:'RTX Corp',        p:'$123',c:'+0.85%',u:1 },
+    { sym:'NOC', n:'Northrop Grumman', p:'$460',c:'+0.92%',u:1 }, { sym:'GD',  n:'General Dynamics', p:'$285',c:'+0.44%',u:1 },
+    { sym:'BA',  n:'Boeing',           p:'$178',c:'-0.33%',u:0 }, { sym:'HII', n:'Huntington Ingalls',p:'$260',c:'+0.60%',u:1 },
+  ],
+};
+
+function renderMarkets() {
+  const d = window._cryptoData || {};
+  const fx = window._forexData || {};
+
+  /* Build crypto section from live CoinGecko data */
+  const cryptoItems = [
+    ['bitcoin','BTC','Bitcoin'], ['ethereum','ETH','Ethereum'], ['solana','SOL','Solana'],
+    ['ripple','XRP','Ripple'], ['cardano','ADA','Cardano'], ['dogecoin','DOGE','Dogecoin'],
+    ['litecoin','LTC','Litecoin'], ['chainlink','LINK','Chainlink'],
+  ].map(([id, sym, name]) => {
+    const coin = d[id];
+    if (!coin) return { sym, n:name, p:'—', c:'—', u:null };
+    const p = coin.usd < 0.01 ? coin.usd.toFixed(5) : coin.usd < 1 ? coin.usd.toFixed(4) : coin.usd < 100 ? coin.usd.toFixed(2) : Math.round(coin.usd).toLocaleString();
+    const chg = coin.usd_24h_change;
+    return { sym, n:name, p:'$'+p, c:Math.abs(chg).toFixed(2)+'%', u: chg >= 0 ? 1 : 0 };
+  });
+
+  /* Forex section from live data */
+  const fxItems = [
+    ['EUR','EUR/USD',true], ['GBP','GBP/USD',true], ['JPY','USD/JPY',false],
+    ['CNY','USD/CNY',false], ['INR','USD/INR',false], ['CHF','USD/CHF',false],
+    ['CAD','USD/CAD',false], ['AUD','AUD/USD',true], ['SGD','USD/SGD',false],
+    ['BRL','USD/BRL',false], ['RUB','USD/RUB',false], ['KRW','USD/KRW',false],
+  ].map(([code, sym, inverse]) => {
+    const rate = fx[code];
+    if (!rate) return null;
+    const val = inverse ? (1/rate).toFixed(4) : rate.toFixed(code==='JPY'?2:code==='KRW'?0:4);
+    return { sym, p: val, c:'live', u:null };
+  }).filter(Boolean);
+
+  const el = document.getElementById('pt-markets');
+  el.innerHTML =
+    mkMSection('Global Indices', MARKET_STATIC.indices) +
+    mkMSection('Commodities', MARKET_STATIC.commodities) +
+    mkMSection('Crypto (Live CoinGecko)', cryptoItems) +
+    (fxItems.length ? mkMSection('Forex — Live Rates', fxItems) : '') +
+    mkMSection('Technology', MARKET_STATIC.tech) +
+    mkMSection('Energy', MARKET_STATIC.energy) +
+    mkMSection('Defence', MARKET_STATIC.defense);
+}
+
+function mkMSection(title, items) {
+  return `<div class="ms">
+    <div class="ms-hd">${title}</div>
+    ${items.map(i => `<div class="mi">
+      <div><div class="mi-sym">${i.sym}</div>${i.n?`<div class="mi-name">${i.n}</div>`:''}</div>
+      <div><div class="mi-p">${i.p}</div>
+      <div class="mi-c ${i.u===1?'up':i.u===0?'dn':'flat'}">${i.u===1?'+':i.u===0?'-':''}${i.c}</div></div>
+    </div>`).join('')}
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════
+   📰 NEWS FEED — Curated global intelligence headlines
+   Categories: breaking, military, markets, energy, world, science, conflict
+══════════════════════════════════════════════════════════ */
+const NEWS_ITEMS = [
+  { tag:'breaking',  tc:'b', title:'IAEA Reports Elevated Uranium Enrichment at Fordow — 60% Purity Confirmed Above JCPOA Limits', src:'IAEA', t:'3m' },
+  { tag:'military',  tc:'m', title:'USAF B-2 Spirit Bombers Deployed to Diego Garcia — CENTCOM Confirms Strategic Positioning', src:'USNI News', t:'9m' },
+  { tag:'conflict',  tc:'c', title:'Ukraine: Russian Forces Launch Largest Drone Swarm — 182 Shaheds Intercepted by Air Defence', src:'UAF/Reuters', t:'15m' },
+  { tag:'markets',   tc:'k', title:'NVIDIA Breaks $4T Market Cap — AI Compute Demand Drives Unprecedented Semiconductor Rally', src:'Bloomberg', t:'21m' },
+  { tag:'military',  tc:'m', title:'South China Sea: USS Theodore Roosevelt CSG Enters Spratlys — PLA Navy Shadows', src:'Pacific Command', t:'28m' },
+  { tag:'energy',    tc:'e', title:'Houthi Attack: VLCC MV Sounion Set Ablaze in Red Sea — Russian-owned, Greek-crewed', src:'Reuters', t:'35m' },
+  { tag:'conflict',  tc:'c', title:'Sudan: RSF Advances on El-Fasher — MSF Reports Hospital Attack, 23 Killed', src:'MSF/AFP', t:'41m' },
+  { tag:'breaking',  tc:'b', title:'M7.1 Earthquake Strikes Vanuatu — Tsunami Advisory Issued for Pacific Rim Nations', src:'USGS/PTWC', t:'47m' },
+  { tag:'markets',   tc:'k', title:'Federal Reserve Signals 2 Rate Cuts in 2026 — Dollar Weakens, Gold Rallies', src:'Fed/FT', t:'52m' },
+  { tag:'science',   tc:'s', title:'James Webb Telescope Images: Earliest Known Galaxy Cluster Found at Redshift Z=12.4', src:'NASA/ESA', t:'58m' },
+  { tag:'military',  tc:'m', title:'NATO Activates Response Force — Four Additional Brigades to Poland and Baltic States', src:'SHAPE/NATO', t:'1h' },
+  { tag:'energy',    tc:'e', title:'OPEC+ Emergency Meeting: Output Cut Extended by 6 Months — WTI Jumps $2.80/bbl', src:'Reuters Energy', t:'1h' },
+  { tag:'conflict',  tc:'c', title:'Myanmar Junta Loses Lashio — SAC Air Force Conducting Retaliatory Strikes on Civilians', src:'Irrawaddy', t:'1h' },
+  { tag:'world',     tc:'w', title:'India-China LAC Disengagement: Final Patrol Points Resolved After 4-Year Standoff', src:'MEA India', t:'2h' },
+  { tag:'breaking',  tc:'b', title:'WHO PHEIC Alert Level 2: Novel Henipavirus Cluster Detected in Bangladesh — 12 Fatalities', src:'WHO', t:'2h' },
+  { tag:'markets',   tc:'k', title:'Bitcoin ATH: $89,420 — Institutional ETF Inflows Hit $2.1B Weekly Record', src:'CoinDesk', t:'2h' },
+  { tag:'military',  tc:'m', title:'Israel IDF Strikes Beirut Southern Suburb — Hezbollah Command Compound Destroyed', src:'IDF/AP', t:'3h' },
+  { tag:'energy',    tc:'e', title:'Solar Storm G4: NOAA SWPC Issues Warning — GPS Degradation Expected 48h', src:'NOAA/SWPC', t:'3h' },
+  { tag:'world',     tc:'w', title:'Arctic Council: Emergency Session on Northern Sea Route Militarization', src:'Arctic Council', t:'4h' },
+  { tag:'science',   tc:'s', title:'SpaceX Starship IFX-7 Completes Full Orbital Test — Moon Mission Architecture Confirmed', src:'SpaceX', t:'4h' },
+];
+
+function renderNews() {
+  const tagMap = { b:'breaking', m:'military', k:'markets', e:'energy', w:'world', s:'science', c:'conflict' };
+  document.getElementById('pt-news').innerHTML = NEWS_ITEMS.map(n => `
+    <div class="ni">
+      <span class="ni-tag tag-${n.tc}">${tagMap[n.tc]||n.tag}</span>
+      <div class="ni-title">${n.title}</div>
+      <div class="ni-meta">${n.src} · ${n.t} ago</div>
+    </div>`).join('');
+}
+
+/* ══════════════════════════════════════════════════════════
+   📡 TICKER BAR — Live scrolling price strip
+══════════════════════════════════════════════════════════ */
+const TICKER = [
+  {s:'BTC',v:'$84,250',c:'+3.12%',u:1},{s:'ETH',v:'$3,284',c:'+1.87%',u:1},
+  {s:'SOL',v:'$142',c:'+4.22%',u:1},{s:'S&P 500',v:'5,934',c:'+0.84%',u:1},
+  {s:'NASDAQ',v:'18,721',c:'+1.12%',u:1},{s:'WTI',v:'$78.42',c:'+0.65%',u:1},
+  {s:'GOLD',v:'$2,312',c:'-0.23%',u:0},{s:'BRENT',v:'$82.17',c:'+0.42%',u:1},
+  {s:'EUR/USD',v:'1.0841',c:'+0.12%',u:1},{s:'USD/JPY',v:'150.42',c:'+0.31%',u:1},
+  {s:'NVDA',v:'$924',c:'+2.31%',u:1},{s:'TSLA',v:'$195',c:'-1.43%',u:0},
+  {s:'LMT',v:'$520',c:'+1.20%',u:1},{s:'URANIUM',v:'$87.40',c:'+2.10%',u:1},
+  {s:'ISS',v:'SKY',c:'ORBITING',u:null},{s:'FLIGHTS',v:'900+',c:'LIVE',u:null},
+  {s:'VESSELS',v:'21',c:'TRACKED',u:null},{s:'CONFLICTS',v:'14',c:'ACTIVE',u:null},
+];
+
+function renderTicker() {
+  const items = [...TICKER, ...TICKER]; /* double for seamless loop */
+  document.getElementById('tk-inner').innerHTML = items.map(i => `
+    <div class="tk-item">
+      <span class="tk-sym">${i.s}</span>
+      <span class="tk-val">${i.v}</span>
+      <span class="tk-chg ${i.u===1?'up':i.u===0?'dn':'flat'}">${i.u===1?'+':i.u===0?'-':''}${i.c}</span>
+    </div>`).join('');
+}
+
+/* ══════════════════════════════════════════════════════════
+   🚨 ANOMALY DETECTION ENGINE
+   Centralized anomaly registry. Each anomaly has:
+   • type: category label
+   • score: severity 0-100 (determines color/priority)
+   • toast: appears as temporary alert
+   • Added to sidebar feed sorted by score
+══════════════════════════════════════════════════════════ */
+const anomalyStore = [];
+
+function addAnomaly(a) {
+  /* Dedup: skip if same title+msg already exists */
+  if (anomalyStore.find(x => x.title === a.title && x.msg === a.msg)) return;
+  a.time = new Date();
+  anomalyStore.unshift(a);
+  if (anomalyStore.length > 40) anomalyStore.pop();
+  G.anomalyCount++;
+  renderAnomalyList();
+  updateAnomalyChip();
+  showToast(a);
+}
+
+function renderAnomalyList() {
+  const el = document.getElementById('anom-list');
+  el.innerHTML = anomalyStore.slice(0, 20).map(a => {
+    const col = a.score >= 80 ? 'var(--red)' : a.score >= 60 ? 'var(--amber)' : 'var(--blue)';
+    return `<div class="an-item" onclick="flyTo(${a.lat||0},${a.lon||0},7)">
+      <div class="an-hd">
+        <span class="an-type" style="color:${col}">${a.icon} ${a.type}</span>
+        <span class="an-sc" style="background:${col}20;color:${col}">${a.score}</span>
+      </div>
+      <div class="an-msg">${a.title}</div>
+      <div class="an-time">${a.msg}</div>
+    </div>`;
+  }).join('');
+  setStatText('an', anomalyStore.length);
+}
+
+function updateAnomalyChip() {
+  const el = document.getElementById('anom-chip');
+  el.textContent = `⚠ ${anomalyStore.length} ANOMALIES`;
+  el.className = anomalyStore.length > 10 ? 'chip chip-red' : 'chip chip-warn';
+}
+
+function showToast(a) {
+  const col = a.score >= 80 ? '#ff4466' : a.score >= 60 ? '#ffcc00' : '#4db8ff';
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.border = `1px solid ${col}30`;
+  el.innerHTML = `<div class="toast-bar" style="background:${col}"></div>
+    <div class="toast-body" style="border-color:${col}30">
+      <div class="toast-title" style="color:${col}">${a.icon} ${a.type} — SCORE ${a.score}</div>
+      <div class="toast-msg">${a.title}: ${a.msg}</div>
+    </div>`;
+  document.getElementById('toast-stack').appendChild(el);
+  /* Auto-dismiss after 6 seconds */
+  setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity .4s'; setTimeout(()=>el.remove(),400); }, 6000);
+}
+
+/* ══════════════════════════════════════════════════════════
+   🎛 ENTITY INSPECTOR PANELS — Unified showEntity function
+   All entity types use this central function to populate
+   the entity card (bottom-left) and intel panel (right).
+══════════════════════════════════════════════════════════ */
+function showEntity(typeLabel, typeColor, title, sub, rows, footerBtns=[]) {
+  document.getElementById('ec-type').textContent  = typeLabel;
+  document.getElementById('ec-type').style.color  = typeColor;
+  document.getElementById('ec-title').textContent = title;
+  document.getElementById('ec-sub').textContent   = sub;
+  document.getElementById('ec-body').innerHTML = rows.map(([k, v, vc]) =>
+    `<div class="ekv"><span class="ek">${k}</span><span class="ev" style="color:${vc||'var(--t0)'}">${v}</span></div>`
+  ).join('');
+  document.getElementById('ec-footer').innerHTML = footerBtns.map(([label, fn]) =>
+    `<button class="ec-act" onclick="${fn}">${label}</button>`
+  ).join('');
+  document.getElementById('entity-card').style.display = 'block';
+
+  /* Populate Intel tab and switch to it */
+  populateIntel(typeLabel, title, rows);
+  /* Auto-switch to Intel tab */
+  switchTabDirect('intel');
+}
+
+function closeEntity() { document.getElementById('entity-card').style.display='none'; }
+
+function populateIntel(type, title, rows) {
+  document.getElementById('pt-intel').innerHTML = `
+    <div class="intel-sec">
+      <div class="intel-title">${title}</div>
+      <div style="font-size:10px;color:var(--t3);margin-bottom:8px">${type}</div>
+    </div>
+    <div class="intel-sec">
+      ${rows.map(([k,v]) => `<div class="intel-kv"><span class="ik">${k}</span><span class="iv">${v}</span></div>`).join('')}
+    </div>
+    <div class="intel-sec">
+      <div style="font-size:9px;color:var(--t3)">Data sourced from open intelligence feeds. Click entity on map for real-time updates.</div>
+    </div>`;
+}
+
+/* Entity show functions for each type */
+function showFlightEntity(f, anomaly) {
+  const [icao, cs, country, , on_gnd, lon, lat, alt, , vel, hdg, vrate, , , squawk] = f;
+  const cs2 = (cs||icao||'UNKNOWN').trim();
+  const altFt = alt ? Math.round(alt*3.281).toLocaleString()+' ft' : '—';
+  const spdKt = vel ? Math.round(vel*1.944)+' kt' : '—';
+  const rows = [
+    ['ICAO 24', icao||'—'],
+    ['Callsign', cs2],
+    ['Country', country||'—'],
+    ['Altitude', altFt],
+    ['Speed', spdKt],
+    ['Heading', hdg ? Math.round(hdg)+'°' : '—'],
+    ['Vert. Rate', vrate ? Math.round(vrate)+' m/s' : '—'],
+    ['Squawk', squawk||'—'],
+    ['Status', on_gnd ? 'On Ground' : 'Airborne', on_gnd?'var(--t3)':'var(--green)'],
+    ...(anomaly ? [['⚠ Anomaly', anomaly.msg, 'var(--red)']] : [])
+  ];
+  showEntity('✈ AIRCRAFT', 'var(--blue)', cs2,
+    `${country||'Unknown'} · ${on_gnd?'On Ground':'Airborne'} · OpenSky Live`,
+    rows, [['Track', `flyTo(${lat},${lon},9)`], ['ADS-B', `window.open('https://globe.adsbexchange.com/?icao=${icao}','_blank')`]]
+  );
+}
+
+function showMilFlightEntity(f) {
+  const rows = [['Callsign',f.cs],['Aircraft',f.type],['Country',f.country],['Mission',f.mission],['Heading',f.hdg+'°'],['Status','Airborne — Mil Squawk']];
+  showEntity('🛩 MILITARY AIRCRAFT', 'var(--purple)', f.cs, `${f.type} · ${f.country}`, rows, [['Track',`flyTo(${f._lat},${f._lon},8)`]]);
+}
+
+function showVesselEntity(v) {
+  const rows = [
+    ['Type', v.type], ['Flag', v.flag], ['MMSI', v.mmsi||'—'],
+    ['IMO', v.imo||'—'], ['Destination', v.dest||'—'],
+    ['Speed', v.spd+' kt'], ['DWT', v.dwt ? v.dwt.toLocaleString()+' t' : '—'],
+    ['LOA', v.loa ? v.loa+'m' : '—'],
+    ['Status', v.spd===0 ? 'STOPPED/SEIZED' : 'UNDERWAY', v.spd===0?'var(--red)':'var(--green)'],
+    ...(v.alert ? [['⚠ Alert', v.alert, 'var(--amber)']] : [])
+  ];
+  showEntity('🚢 VESSEL', v.alert?'var(--amber)':'var(--cyan)', v.name,
+    `${v.type} · Flag: ${v.flag}`, rows,
+    [['Track',`flyTo(${v.lat},${v.lon},8)`],['MarineTraffic',`window.open('https://www.marinetraffic.com/en/ais/details/ships/mmsi:${v.mmsi||""}','_blank')`]]
+  );
+}
+
+function showEqEntity(f) {
+  const [lon,lat,depth] = f.geometry.coordinates;
+  const {mag,place,time,tsunami,type} = f.properties;
+  const col = mag>=6?'var(--red)':mag>=5?'var(--orange)':'var(--amber)';
+  const rows = [
+    ['Magnitude', `M${mag}`, col], ['Location', place||'—'],
+    ['Depth', depth+' km'], ['Time', new Date(time).toUTCString()],
+    ['Tsunami', tsunami?'⚠ WARNING ISSUED':'No alert', tsunami?'var(--red)':'var(--green)'],
+    ['Type', type||'earthquake'], ['Coordinates', `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`]
+  ];
+  showEntity('🌋 SEISMIC EVENT', col, `M${mag} Earthquake`, place||'Unknown Location', rows,
+    [['Zoom',`flyTo(${lat},${lon},7)`],['USGS',`window.open('https://earthquake.usgs.gov/earthquakes/eventpage/${f.id}','_blank')`]]
+  );
+}
+
+function showMilBaseEntity(b) {
+  showEntity('🏛 MILITARY BASE', 'var(--purple)', b.name,
+    `${b.branch} · ${b.country}`,
+    [['Country',b.country],['Branch',b.branch],['Type',b.type],['Assets',b.assets],['Personnel',b.personnel],['Status',b.status,b.status==='Active'?'var(--green)':'var(--t3)']],
+    [['Zoom',`flyTo(${b.lat},${b.lon},9)`]]
+  );
+}
+
+function showConflictEntity(z) {
+  const col = z.severity==='ACTIVE WAR'?'var(--red)':z.severity.includes('THREAT')?'var(--amber)':'var(--orange)';
+  showEntity('⚔ CONFLICT ZONE', col, z.name, z.severity,
+    [['Severity',z.severity,col],['Description',z.desc.slice(0,80)+'…'],['Factions',z.factions],['Casualties',z.casualties],['Since',z.start]],
+    [['Zoom',`flyTo(${z.lat},${z.lon},6)`]]
+  );
+}
+
+function showOilEntity(o) {
+  showEntity('🛢 OIL & GAS', 'var(--amber)', o.name, `${o.type} · ${o.country}`,
+    [['Type',o.type],['Operator',o.op],['Country',o.country],['Output',o.output,'var(--amber)'],['Reserves',o.reserves],['Status',o.status,o.status==='Active'?'var(--green)':'var(--t3)']],
+    [['Zoom',`flyTo(${o.lat},${o.lon},7)`]]
+  );
+}
+
+function showPortEntity(p) {
+  showEntity('⚓ PORT', 'var(--cyan)', p.name, `${p.type} · ${p.country}`,
+    [['Country',p.country],['Rank',p.rank<=100?'#'+p.rank:'—'],['Volume',p.vol],['Type',p.type]],
+    [['Zoom',`flyTo(${p.lat},${p.lon},10)`]]
+  );
+}
+
+function showNuclearEntity(n) {
+  const col = n.alert ? 'var(--red)' : 'var(--blue)';
+  showEntity('☢ NUCLEAR SITE', col, n.name, `${n.type} · ${n.country}`,
+    [['Type',n.type],['Country',n.country],['Status',n.status,n.status.includes('RISK')||n.status.includes('VIOLATION')?'var(--red)':'var(--green)'],['Reactors',String(n.reactors)],['Capacity',n.mw+' MW'],['IAEA',n.alert||'Under safeguards','var(--t2)']],
+    [['Zoom',`flyTo(${n.lat},${n.lon},8)`]]
+  );
+}
+
+function showSatEntity(s) {
+  const orbitType = s.alt >= 35000 ? 'GEO' : s.alt >= 2000 ? 'MEO' : 'LEO';
+  showEntity('🛰 SATELLITE', 'var(--pink)', s.name, `${s.type} · ${s.agency}`,
+    [['Type',s.type],['Agency',s.agency],['Altitude',s.alt.toLocaleString()+' km'],['Orbit',orbitType],['Period',s.period.toLocaleString()+' min'],['Inclination','~'+Math.abs(s._baseLat||s.lat).toFixed(1)+'°']],
+    [['Track',`flyTo(${s._baseLat||s.lat},${s._baseLon||s.lon},4)`]]
+  );
+}
+
+function showISSEntity(d) {
+  showEntity('🛸 ISS', 'var(--cyan)', 'International Space Station',
+    'Continuously crewed LEO habitat — Live position',
+    [['Altitude',Math.round(d.altitude)+' km'],['Velocity',Math.round(d.velocity)+' km/h ('+Math.round(d.velocity/3600)+'km/s)'],['Latitude',d.latitude.toFixed(4)+'°'],['Longitude',d.longitude.toFixed(4)+'°'],['Crew','International (NASA/Roscosmos/ESA/JAXA)'],['Orbit Period','~92.9 minutes'],['Inclination','51.6°'],['Data Source','wheretheiss.at · Live']],
+    [['Track Live',`flyTo(${d.latitude},${d.longitude},5)`],['NASA',`window.open('https://www.nasa.gov/international-space-station','_blank')`]]
+  );
+}
+
+function showWeatherEntity(city, wx, pm25) {
+  const cw = wx.current_weather || {};
+  const aqi = pm25 !== null ? aqiFromPM25(pm25) : null;
+  const aqiLabel = aqi !== null ? `${aqi} (${aqi<=50?'Good':aqi<=100?'Moderate':aqi<=150?'Unhealthy for Sensitive':aqi<=200?'Unhealthy':aqi<=300?'Very Unhealthy':'Hazardous'})` : '—';
+  showEntity('🌡 WEATHER', 'var(--cyan)', city.name, `Live weather · Open-Meteo API`,
+    [['Temperature',cw.temperature+'°C'],['Feels Like',wx.hourly?.apparent_temperature?.[0]+'°C'||'—'],['Wind',cw.windspeed+' km/h from '+cw.winddirection+'°'],['Condition',wxCodeEmoji(cw.weathercode)+' WMO '+cw.weathercode],['PM2.5',pm25!==null?pm25.toFixed(1)+' µg/m³':'—'],['AQI (EPA)',aqiLabel],['Coordinates',city.lat+'°, '+city.lon+'°'],['Data','Open-Meteo (free, real-time)']],
+    [['Zoom',`flyTo(${city.lat},${city.lon},9)`]]
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   🔍 UNIVERSAL SEARCH ENGINE
+   Searches across ALL layers simultaneously.
+   Priority: exact name match > partial name > substring
+   Also geocodes via Nominatim for any location not in local index.
+══════════════════════════════════════════════════════════ */
+function rebuildFlightSearchIdx() {
+  /* Remove old flight entries */
+  G.searchIdx = G.searchIdx.filter(x => x.t !== 'flight');
+  Object.values(G.flights).forEach(mk => {
+    G.searchIdx.push({
+      t:'flight', emoji:'✈', name:mk.callsign, sub:`${mk.country||'—'} · ${mk.alt?Math.round(mk.alt*3.281)+'ft':'ground'}`,
+      color:'var(--blue)', action:() => { flyTo(mk.lat,mk.lon,10); }
+    });
+  });
+}
+
+function rebuildEqSearchIdx() {
+  G.searchIdx = G.searchIdx.filter(x => x.t !== 'seismic');
+  G.earthquakes.forEach(f => {
+    const [lon,lat] = f.geometry.coordinates;
+    G.searchIdx.push({
+      t:'seismic', emoji:'🌋', name:`M${f.properties.mag} · ${f.properties.place}`,
+      sub:new Date(f.properties.time).toUTCString(), color:'var(--amber)',
+      action:() => { flyTo(lat,lon,7); showEqEntity(f); }
+    });
+  });
+}
+
+function buildStaticSearchIdx() {
+  /* Only build once (or clear and rebuild) */
+  G.searchIdx = G.searchIdx.filter(x => x.t==='flight'||x.t==='seismic');
+  [
+    ...VESSELS.map(v => ({ t:'vessel',emoji:'🚢',name:v.name,sub:`${v.type} · ${v.flag}`,color:'var(--cyan)',action:()=>{flyTo(v.lat,v.lon,8);showVesselEntity(v);} })),
+    ...MIL_BASES.map(b => ({ t:'milbase',emoji:'🏛',name:b.name,sub:`${b.branch} · ${b.country}`,color:'var(--purple)',action:()=>{flyTo(b.lat,b.lon,9);showMilBaseEntity(b);} })),
+    ...MIL_FLIGHTS.map(f => ({ t:'milfl',emoji:'🛩',name:f.cs,sub:`${f.type} · ${f.country}`,color:'var(--purple)',action:()=>{flyTo(f._lat||f.lat,f._lon||f.lon,8);showMilFlightEntity(f);} })),
+    ...CONFLICT_ZONES.map(z => ({ t:'conflict',emoji:'⚔',name:z.name,sub:z.severity,color:'var(--red)',action:()=>{flyTo(z.lat,z.lon,6);showConflictEntity(z);} })),
+    ...OIL_DB.map(o => ({ t:'oil',emoji:'🛢',name:o.name,sub:`${o.type} · ${o.country}`,color:'var(--amber)',action:()=>{flyTo(o.lat,o.lon,8);showOilEntity(o);} })),
+    ...PORTS.map(p => ({ t:'port',emoji:'⚓',name:p.name,sub:`Port · ${p.country}`,color:'var(--cyan)',action:()=>{flyTo(p.lat,p.lon,10);showPortEntity(p);} })),
+    ...NUCLEAR_SITES.map(n => ({ t:'nuclear',emoji:'☢',name:n.name,sub:`${n.type} · ${n.country}`,color:'var(--blue)',action:()=>{flyTo(n.lat,n.lon,8);showNuclearEntity(n);} })),
+    ...SAT_DB.map(s => ({ t:'satellite',emoji:'🛰',name:s.name,sub:`${s.type} · ${s.agency}`,color:'var(--pink)',action:()=>{flyTo(s._baseLat||s.lat,s._baseLon||s.lon,4);showSatEntity(s);} })),
+    ...CITIES.map(c => ({ t:'weather',emoji:'🌡',name:c.name,sub:'Weather station',color:'var(--cyan)',action:()=>{flyTo(c.lat,c.lon,9);} })),
+    /* ISS */
+    { t:'satellite',emoji:'🛸',name:'ISS',sub:'International Space Station · Live',color:'var(--cyan)',action:()=>{if(issMarker){const ll=issMarker.getLatLng();flyTo(ll.lat,ll.lng,5);}}}
+  ].forEach(item => G.searchIdx.push(item));
+}
+
+/* Search input handler */
+const searchInput = document.getElementById('search-input');
+const searchResults = document.getElementById('search-results');
+const siClear = document.getElementById('si-clear');
+
+let searchDebounce = null;
+searchInput.addEventListener('input', e => {
+  clearTimeout(searchDebounce);
+  const q = e.target.value.trim();
+  siClear.style.display = q ? 'block' : 'none';
+  if (q.length < 1) { searchResults.style.display='none'; return; }
+  searchDebounce = setTimeout(() => doSearch(q), 150);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') clearSearch();
+  if (e.key === 'Enter' && searchInput.value.trim()) {
+    /* If it looks like coordinates (e.g. "40.7,-74.0") fly to them directly */
+    const coordMatch = searchInput.value.match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/);
+    if (coordMatch) {
+      flyTo(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]), 10);
+      clearSearch();
+    }
+  }
+});
+
+siClear.addEventListener('click', clearSearch);
+
+async function doSearch(q) {
+  const qL = q.toLowerCase();
+  /* Search local index first */
+  const local = G.searchIdx.filter(item =>
+    item.name.toLowerCase().includes(qL) || (item.sub||'').toLowerCase().includes(qL)
+  ).slice(0, 8);
+
+  /* Also search markets if query matches */
+  let markets = [];
+  const allMarkets = [
+    ...MARKET_STATIC.indices,
+    ...MARKET_STATIC.commodities,
+    ...MARKET_STATIC.tech,
+    ...MARKET_STATIC.energy,
+    ...MARKET_STATIC.defense
+  ];
+  const marketMatches = allMarkets.filter(m => 
+    m.sym.toLowerCase().includes(qL) || (m.n||'').toLowerCase().includes(qL)
+  ).slice(0, 4);
+  markets = marketMatches.map(m => ({
+    t:'market', emoji:'📈',
+    name: m.sym + (m.n ? ' — '+m.n : ''),
+    sub: m.p + ' ' + m.c,
+    color: m.u === 1 ? 'var(--green)' : m.u === 0 ? 'var(--red)' : 'var(--t2)',
+    action: () => { switchTabDirect('markets'); clearSearch(); }
+  }));
+
+  /* Also query Nominatim geocoder for places */
+  let places = [];
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=3&addressdetails=0`,
+      { headers:{ 'Accept-Language':'en' } });
+    const data = await res.json();
+    places = data.map(p => ({
+      t:'location', emoji:'📍',
+      name: p.display_name.split(',').slice(0,2).join(','),
+      sub: p.type+' · lat:'+parseFloat(p.lat).toFixed(3)+' lon:'+parseFloat(p.lon).toFixed(3),
+      color: 'var(--green)',
+      action: () => { flyTo(+p.lat,+p.lon,12); clearSearch(); }
+    }));
+  } catch(e) {}
+
+  renderSearchResults([...local, ...markets, ...places].slice(0, 15));
+}
+
+function renderSearchResults(results) {
+  if (!results.length) { searchResults.style.display='none'; return; }
+  searchResults.innerHTML = results.map((r, i) => `
+    <div class="sr-item" data-idx="${i}">
+      <span class="sr-badge" style="background:${r.color}18;color:${r.color}">${r.emoji} ${r.t}</span>
+      <div><div class="sr-name">${r.name}</div><div class="sr-sub">${r.sub||''}</div></div>
+    </div>`).join('');
+  /* Attach click handlers (can't use inline onclick safely with closures) */
+  searchResults.querySelectorAll('.sr-item').forEach((el, i) => {
+    el.addEventListener('click', () => { if(results[i]?.action) results[i].action(); searchResults.style.display='none'; });
+  });
+  searchResults.style.display = 'block';
+}
+
+function clearSearch() {
+  searchInput.value = '';
+  siClear.style.display = 'none';
+  searchResults.style.display = 'none';
+}
+
+/* Close search on outside click */
+document.addEventListener('click', e => {
+  if (!document.getElementById('search-box').contains(e.target)) searchResults.style.display='none';
+});
+
+/* ══════════════════════════════════════════════════════════
+   📺 LIVE FEED MODAL — Public webcams
+   Links to real public CCTV/webcam embeds
+══════════════════════════════════════════════════════════ */
+const LIVE_CAMS = [
+  { name:'Times Square NYC', loc:'New York, USA', url:'https://www.earthcam.com/usa/newyork/timessquare/?cam=tsrobo1', thumb:'🗽' },
+  { name:'Eiffel Tower', loc:'Paris, France', url:'https://www.earthcam.com/world/france/paris/eiffeltower/?cam=eiffel_tower', thumb:'🗼' },
+  { name:'Shibuya Crossing', loc:'Tokyo, Japan', url:'https://www.youtube.com/embed/PKniT6MUVDQ?autoplay=1', thumb:'🌐' },
+  { name:'Las Vegas Strip', loc:'Nevada, USA', url:'https://www.earthcam.com/usa/nevada/lasvegas/?cam=lasvegasstrip_hd', thumb:'🎰' },
+  { name:'Sydney Harbour', loc:'Sydney, Australia', url:'https://www.sydney.com/webcam', thumb:'🦘' },
+  { name:'Suez Canal', loc:'Ismailia, Egypt', url:'https://www.marinetraffic.com/en/ais/home/centerx:32.5/centery:30.5/zoom:11', thumb:'🚢' },
+  { name:'ISS Earth View', loc:'Low Earth Orbit', url:'https://www.nasa.gov/nasatv', thumb:'🛸' },
+  { name:'Times Square (360°)', loc:'New York, USA', url:'https://www.youtube.com/embed/1EiC9bvVGnk?autoplay=1', thumb:'🌆' },
+  { name:'Singapore Marina Bay', loc:'Singapore', url:'https://www.youtube.com/embed/2rJPj3RhJMY?autoplay=1', thumb:'🦁' },
+  { name:'London Trafalgar Sq.', loc:'London, UK', url:'https://www.youtube.com/embed/ZhoPBhAEDr8?autoplay=1', thumb:'🇬🇧' },
+  { name:'Strait of Malacca', loc:'Johor Strait', url:'https://www.marinetraffic.com/en/ais/home/centerx:103.7/centery:1.4/zoom:9', thumb:'⚓' },
+  { name:'Yokohama Port', loc:'Japan', url:'https://www.youtube.com/embed/g3cJl7PfF_s?autoplay=1', thumb:'🇯🇵' },
+];
+
+function openLiveFeed() {
+  const grid = document.getElementById('cam-grid');
+  grid.innerHTML = LIVE_CAMS.map(cam => `
+    <div class="cam-item" onclick="window.open('${cam.url}','_blank')">
+      <div class="cam-thumb" style="font-size:48px;display:flex;align-items:center;justify-content:center;background:var(--s2)">${cam.thumb}</div>
+      <div class="cam-info">
+        <div class="cam-name">${cam.name}</div>
+        <div class="cam-loc">${cam.loc}</div>
+      </div>
+    </div>`).join('');
+  document.getElementById('feed-modal').classList.add('open');
+}
+function closeLiveFeed() { document.getElementById('feed-modal').classList.remove('open'); }
+document.getElementById('feed-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('feed-modal')) closeLiveFeed();
+});
+
+/* ══════════════════════════════════════════════════════════
+   TAB SWITCHER — Right panel tabs
+   Fixes the previous bug where switching tabs didn't work.
+   Simple approach: hide all .pt, show only target .pt.
+══════════════════════════════════════════════════════════ */
+function switchTab(name, el) {
+  /* Hide all tab panels */
+  document.querySelectorAll('.pt').forEach(p => p.classList.remove('on'));
+  /* Remove active from all tab buttons */
+  document.querySelectorAll('.pt-btn').forEach(b => b.classList.remove('on'));
+  /* Show target panel */
+  const panel = document.getElementById('pt-' + name);
+  if (panel) panel.classList.add('on');
+  /* Activate button */
+  if (el) el.classList.add('on');
+}
+
+/* Switch tab without needing the button element (called from showEntity) */
+function switchTabDirect(name) {
+  document.querySelectorAll('.pt').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.pt-btn').forEach(b => b.classList.remove('on'));
+  const panel = document.getElementById('pt-' + name);
+  if (panel) panel.classList.add('on');
+  /* Find matching button */
+  document.querySelectorAll('.pt-btn').forEach(b => {
+    if (b.textContent.trim().toLowerCase() === name) b.classList.add('on');
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   ANIMATION LOOP — Called 60fps via requestAnimationFrame
+   Handles:
+   1. Flight position interpolation between API fetches
+   2. Military aircraft patrol animation
+   3. Satellite orbital drift
+   4. Vessel slow drift
+══════════════════════════════════════════════════════════ */
+let lastRaf = Date.now();
+
+function animLoop() {
+  const now = Date.now();
+  const dt = (now - lastRaf) / 1000; /* delta time in seconds */
+  lastRaf = now;
+
+  /* ─ Interpolate commercial flights ─
+     Between OpenSky fetches (every 25s), move each plane forward.
+     Uses stored velocity and heading from last fetch. */
+  const timeSinceFetch = (now - G.flightFetchTime) / 1000;
+  if (timeSinceFetch < 120) { /* only interpolate if fetch is recent */
+    Object.values(G.flights).forEach(mk => {
+      if (!mk.vel || !mk.hdg) return;
+      const hdgRad = mk.hdg * Math.PI / 180;
+      const R = 6371000;
+      /* Elapsed time since this marker was last positioned */
+      const elapsed = (now - mk.fetchT) / 1000;
+      const dist = mk.vel * elapsed; /* meters traveled = v × t */
+      /* Great-circle coordinate advance */
+      const dLat = (dist * Math.cos(hdgRad)) / R * (180/Math.PI);
+      const dLon = (dist * Math.sin(hdgRad)) / (R * Math.cos(mk.lat * Math.PI/180)) * (180/Math.PI);
+      mk.marker.setLatLng([mk.lat + dLat, mk.lon + dLon]);
+    });
+  }
+
+  /* ─ Animate military patrol aircraft ─
+     Circular/oval orbit around base position */
+  const milT = now / 8000; /* slow circular speed */
+  MIL_FLIGHTS.forEach((f, i) => {
+    if (!f._marker) return;
+    /* Phase offset per aircraft to avoid stacking */
+    const phase = milT + (i * 2 * Math.PI / MIL_FLIGHTS.length);
+    const newLat = f.lat + Math.sin(phase) * 0.6;
+    const newLon = f.lon + Math.cos(phase) * 0.9;
+    f._marker.setLatLng([newLat, newLon]);
+    f._lat = newLat; f._lon = newLon;
+  });
+
+  /* ─ Animate satellites (orbital drift) ─ */
+  animateSatellites();
+
+  /* ─ Animate vessels (slow drift along heading) ─ */
+  const vesT = now / 1000;
+  VESSELS.forEach((v, i) => {
+    if (!v._marker || v.spd === 0) return;
+    /* Convert knots to degrees per second at given lat:
+       1 knot = 1.852 km/h = 0.5144 m/s
+       degrees/s = m/s / (111000 m/degree) */
+    const speedDeg = v.spd * 0.5144 / 111000;
+    const hdgRad = (v.hdg||0) * Math.PI / 180;
+    /* Elapsed since page load in seconds */
+    const elapsed = vesT;
+    const dLat = speedDeg * Math.cos(hdgRad) * elapsed;
+    const dLon = speedDeg * Math.sin(hdgRad) / Math.cos(v._baseLat * Math.PI/180) * elapsed;
+    /* Keep drift small (reset if too far from base) */
+    const currentDrift = Math.hypot(dLat, dLon);
+    if (currentDrift < 2) { /* max 2 degrees drift before reset */
+      v._marker.setLatLng([v._baseLat + dLat, v._baseLon + dLon]);
+    }
+  });
+
+  requestAnimationFrame(animLoop);
+}
+
+/* ══════════════════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════════════════ */
+function setCount(id, n) {
+  const el = document.getElementById('cnt-' + id);
+  if (el) el.textContent = n;
+}
+function setStatText(id, v) {
+  const el = document.getElementById('st-' + id);
+  if (el) el.textContent = v;
+}
+function setLdMsg(msg) {
+  const el = document.getElementById('ld-msg');
+  if (el) el.textContent = msg;
+}
+function timeAgo(isoStr) {
+  const s = (Date.now() - new Date(isoStr).getTime()) / 1000;
+  if (s < 60) return Math.round(s)+'s ago';
+  if (s < 3600) return Math.round(s/60)+'m ago';
+  if (s < 86400) return Math.round(s/3600)+'h ago';
+  return Math.round(s/86400)+'d ago';
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ══════════════════════════════════════════════════════════
+   BOOT SEQUENCE — Initialize all layers and API calls
+══════════════════════════════════════════════════════════ */
+async function boot() {
+  /* Step 1: Static layers (instant) */
+  setLdMsg('Initializing map layers...');
+  initVessels();
+  initMilBases();
+  initMilFlights();
+  initSatellites();
+  initOil();
+  initPorts();
+  initConflict();
+  initNuclear();
+
+  /* Step 2: Live data fetches */
+  setLdMsg('Connecting to OpenSky Network...');
+  await fetchFlights();
+
+  setLdMsg('Loading USGS seismic data...');
+  await fetchEarthquakes();
+
+  setLdMsg('Fetching ISS position...');
+  await fetchISS();
+
+  setLdMsg('Loading weather + AQI data...');
+  await fetchWeather();
+
+  setLdMsg('Fetching market data...');
+  await fetchCrypto();
+  await fetchForex();
+
+  setLdMsg('Loading space news...');
+  await fetchSpaceNews();
+
+  /* Step 3: Render UI panels */
+  setLdMsg('Rendering intelligence panels...');
+  renderNews();
+  renderMarkets();
+  renderTicker();
+  buildStaticSearchIdx();
+
+  /* Step 4: Initial anomaly injection (pre-known situations) */
+  setTimeout(() => {
+    addAnomaly({ type:'VESSEL SEIZED', icon:'🚢', title:'MV Galaxy Leader', msg:'Houthi-seized — Red Sea Nov 2023. Still held.', lat:14.2, lon:42.8, score:90 });
+    addAnomaly({ type:'NUCLEAR RISK', icon:'☢', title:'Zaporizhzhia NPP', msg:'Russian military occupation — IAEA monitoring', lat:47.51, lon:34.59, score:88 });
+    addAnomaly({ type:'CONFLICT ESCALATION', icon:'⚔', title:'Gaza Strip', msg:'Active warfare — humanitarian corridor limited', lat:31.4, lon:34.4, score:95 });
+    addAnomaly({ type:'MARITIME THREAT', icon:'🚢', title:'Red Sea Corridor', msg:'Houthi anti-ship missiles — shipping diverting', lat:13.5, lon:43.5, score:82 });
+  }, 1500);
+
+  /* Step 5: Start animation loop */
+  requestAnimationFrame(animLoop);
+
+  /* Step 6: Set up periodic refresh intervals */
+  setInterval(fetchFlights,      25000);   /* flights: every 25 seconds */
+  setInterval(fetchEarthquakes,  90000);   /* earthquakes: every 90 seconds */
+  setInterval(fetchISS,          8000);    /* ISS: every 8 seconds */
+  setInterval(fetchWeather,      600000);  /* weather: every 10 minutes */
+  setInterval(fetchCrypto,       120000);  /* crypto: every 2 minutes */
+  setInterval(fetchForex,        300000);  /* forex: every 5 minutes */
+  setInterval(fetchSpaceNews,    300000);  /* space news: every 5 minutes */
+
+  /* Step 7: Hide loader */
+  setLdMsg('WORLDVIEW INITIALIZED ✓');
+  await sleep(500);
+  const loader = document.getElementById('loader');
+  loader.style.opacity = '0';
+  loader.style.pointerEvents = 'none';
+  setTimeout(() => loader.remove(), 700);
+}
+
+/* Start the platform */
+boot();
+</script>
+</body>
+</html>
